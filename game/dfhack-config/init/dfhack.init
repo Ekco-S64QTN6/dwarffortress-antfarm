@@ -13,3 +13,17 @@
 
 # making the shadow a little darker, better for a bright tileset.
 # multilevel shadowcolor 0 0 0 0.5
+
+#######################################################
+# Antfarm: browsing embark sites from the map          #
+#######################################################
+# antfarm_embark ranks every flat 4x4 rectangle in the world. These step the
+# cursor through that shortlist on the embark screen so a site can be looked at
+# on camera before committing; each step prints its stats and DF's own live
+# aquifer verdict. "antfarm_embark here" embarks where the cursor is.
+#
+# The keys only bind on the site selection screen, so they do not shadow
+# anything in the fort.
+keybinding add Ctrl-N@choose_start_site "antfarm_embark next"
+keybinding add Ctrl-P@choose_start_site "antfarm_embark prev"
+keybinding add Ctrl-E@choose_start_site "antfarm_embark here"

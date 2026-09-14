@@ -104,6 +104,12 @@ antfarm_ui = antfarm_ui or {
     popup_attempts = 0,
     popup_since = 0,
     seen_popups = {},
+    -- A keystroke sent with gui.simulateInput is QUEUED, not applied: DF feeds
+    -- it on a later frame. Checking whether it worked in the same call always
+    -- reads the pre-keystroke screen, so what was attempted is recorded here
+    -- and confirmed on a subsequent tick.
+    pending = nil,
+    pending_popup = nil,
 
     was_paused = false,
     paused_since = 0,
@@ -349,6 +355,23 @@ end
 -- Returns the texts of popups seen for the first time this tick.
 local function handle_popups(now, force)
     local n = popup_count()
+
+    -- Confirm whatever the previous tick pressed Enter at.
+    local pp = antfarm_ui.pending_popup
+    if pp then
+        if n < pp.n then
+            antfarm_ui.stats.popups = antfarm_ui.stats.popups + (pp.n - n)
+            for _, t in ipairs(pp.texts) do note('popup dismissed', t) end
+            antfarm_ui.pending_popup = nil
+            if n == 0 then
+                antfarm_ui.popup_attempts = 0
+                antfarm_ui.popup_since = 0
+            end
+        else
+            antfarm_ui.pending_popup = nil
+        end
+    end
+
     if n == 0 then
         antfarm_ui.popup_attempts = 0
         antfarm_ui.popup_since = 0
@@ -380,17 +403,10 @@ local function handle_popups(now, force)
 
     if antfarm_ui.popup_attempts <= MAX_ATTEMPTS and scr then
         -- Exactly what a player presses: Enter, bound to
-        -- CLOSE_MEGA_ANNOUNCEMENT in data/init/interface.txt.
+        -- CLOSE_MEGA_ANNOUNCEMENT in data/init/interface.txt. The key is
+        -- queued, so the result is checked on the next tick.
         pcall(gui.simulateInput, scr, 'CLOSE_MEGA_ANNOUNCEMENT')
-        local left = popup_count()
-        if left < n then
-            antfarm_ui.stats.popups = antfarm_ui.stats.popups + (n - left)
-            for _, t in ipairs(texts) do note('popup dismissed', t) end
-            if left == 0 then
-                antfarm_ui.popup_attempts = 0
-                antfarm_ui.popup_since = 0
-            end
-        end
+        antfarm_ui.pending_popup = {n = n, texts = texts}
     else
         -- The key did not take. Clear the queue so the fortress runs again, and
         -- say so: this path skips DF's own teardown and leaks the message
@@ -658,19 +674,40 @@ local function handle_screen(now)
         key = 'screen.dismiss'
     end
 
-    -- Re-read rather than assume it worked.
-    local _, after_t, after_f = current_screen()
-    if (tostring(after_t) .. '|' .. tostring(after_f)) ~= ident then
+    -- Whether it worked cannot be known yet; confirm_pending() checks on a
+    -- later tick, once DF has actually fed the key.
+    antfarm_ui.pending = {
+        ident = ident,
+        screen = tostring(tname),
+        why = handler and handler.why or 'unrecognised',
+        key = key,
+        text = said,
+        at = now,
+        waited = now - antfarm_ui.focus_since,
+    }
+    return nil
+end
+
+-- Did the keystroke we sent last tick actually close the screen? Returns the
+-- dismissal record when it did, so the caller can report it.
+local function confirm_pending(now)
+    local p = antfarm_ui.pending
+    if not p then return nil end
+    local _, tname, focus = current_screen()
+    local ident = tostring(tname) .. '|' .. tostring(focus)
+    if ident ~= p.ident then
+        antfarm_ui.pending = nil
         antfarm_ui.stats.screens = antfarm_ui.stats.screens + 1
         note('screen dismissed', ('%s (%s) closed with %s after %ds%s')
-             :format(tostring(tname), handler and handler.why or 'unrecognised', key,
-                     math.floor((now - antfarm_ui.focus_since) / 1000),
-                     said and (' -- ' .. said) or ''))
+             :format(p.screen, p.why, p.key, math.floor(p.waited / 1000),
+                     p.text and (' -- ' .. p.text) or ''))
         antfarm_ui.focus = nil
         antfarm_ui.attempts = 0
-        return {screen = tostring(tname), why = handler and handler.why or 'unrecognised',
-                text = said}
+        return {screen = p.screen, why = p.why, text = p.text}
     end
+    -- Still there. Give DF a couple of frames before writing the attempt off;
+    -- the escalation ladder in handle_screen takes it from here.
+    if now - p.at > 2000 then antfarm_ui.pending = nil end
     return nil
 end
 
@@ -857,9 +894,12 @@ function tick()
     end
 
     quiet_status_flags()
+    -- Confirm last tick's keystroke first: until that is resolved, the screen
+    -- handler cannot tell a screen it just closed from one that will not close.
+    local dismissed = confirm_pending(now)
     local popups = handle_popups(now)
     local pause = handle_pause(now)
-    local dismissed = handle_screen(now)
+    if not dismissed then dismissed = handle_screen(now) end
 
     if antfarm_ui.screens_enabled and is_dwarfmode() and petition_count() > 0 then
         check_petitions()
@@ -914,6 +954,8 @@ dfhack.onStateChange.antfarm_ui = function(code)
         antfarm_ui.popup_since = 0
         antfarm_ui.seen_popups = {}
         antfarm_ui.gave_up = {}
+        antfarm_ui.pending = nil
+        antfarm_ui.pending_popup = nil
         antfarm_ui.was_paused = false
         antfarm_ui.paused_since = 0
         antfarm_ui.last_pause_reason = nil

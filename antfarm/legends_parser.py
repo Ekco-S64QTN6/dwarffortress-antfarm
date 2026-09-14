@@ -158,9 +158,13 @@ if __name__ == "__main__":
     
     xml_path = args.xml_path
     if not xml_path:
-        xml_path = find_latest_legends_xml(".")
-        if not xml_path:
-            xml_path = find_latest_legends_xml("game")
+        # legends/ first: that is where `exportlegends all ../legends` puts it.
+        # The game directory is still searched because DF drops the export in
+        # its own working directory if the folder argument is omitted.
+        for where in ("legends", ".", "game"):
+            xml_path = find_latest_legends_xml(where)
+            if xml_path:
+                break
             
     if not xml_path:
         print("Error: No legends XML file found. Please specify the path or export one in DF via 'exportlegends'.")

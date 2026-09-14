@@ -365,5 +365,46 @@ do
     check('tick survives with no map loaded', ok)
 end
 
+-- ---------------------------------------------------------------- --
+-- keys are asynchronous in the real game                            --
+-- ---------------------------------------------------------------- --
+-- DF feeds a simulated key on a later frame, so "did that work?" cannot be
+-- answered in the same call. Live testing caught the watchdog dismissing a
+-- screen correctly but recording it as a failure to dismiss; these pin it.
+
+local function run_async(env, w, ms, step)
+    step = step or 200
+    for _ = 1, math.max(1, math.floor(ms / step)) do
+        w.advance(step)
+        env.tick()
+        w.flush_keys()      -- DF processes the queued key after our tick
+    end
+end
+
+do
+    local w, env = fresh()
+    w.async_keys = true
+    env.set_screens_enabled(true)
+    w.push{vtype = 'viewscreen_topicmeetingst'}
+    run_async(env, w, 8000)
+    check('a known screen still closes when keys land a frame late',
+          w.top().vtype == 'viewscreen_dwarfmodest', w.top().vtype)
+    check('and the dismissal is counted, not lost',
+          env.report().screens_dismissed == 1,
+          tostring(env.report().screens_dismissed))
+end
+
+do
+    local w, env = fresh()
+    w.async_keys = true
+    w.add_popup('You have discovered an expansive cavern!')
+    run_async(env, w, 4000)
+    check('a popup still clears with late keys', env.popup_count() == 0)
+    check('the popup is counted as dismissed, not force-cleared',
+          env.report().popups_dismissed == 1 and env.report().failures == 0,
+          ('dismissed=%s failures=%s'):format(env.report().popups_dismissed,
+                                              env.report().failures))
+end
+
 print(('\n%d passed, %d failed'):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

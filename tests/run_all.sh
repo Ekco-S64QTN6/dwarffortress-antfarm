@@ -31,6 +31,7 @@ done
 
 step "Python unit tests"
 .venv/bin/python -m tests.test_engine || fail=1
+.venv/bin/python -m tests.test_wire || fail=1
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "SOME CHECKS FAILED"; fi

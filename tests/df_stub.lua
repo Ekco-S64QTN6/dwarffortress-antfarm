@@ -144,7 +144,8 @@ function M.new()
     local blocks_by_key = {}
     local blocks = vector{}
     df.global.world.map = {map_blocks = blocks, x_count = 192, y_count = 192, z_count = 60}
-    df.global.world.job_list = {next = nil}
+    -- Real field name: world.jobs.list, not world.job_list.
+    df.global.world.jobs = {list = {next = nil}}
 
     local function block_key(bx, by, bz) return bx .. ',' .. by .. ',' .. bz end
     local function make_block(bx, by, bz)
@@ -276,6 +277,44 @@ function M.new()
         getPosition = function(u) return u.pos end,
     }
     dfhack.job = {checkDesignationsNow = function() end}
+    -- ---- world map, for embark site selection ------------------- --
+    -- region_map[x][y] with the fields antfarm_embark scores on.
+    -- Shaped like the real thing: region_map is region_map_entry**, so
+    -- region_map[x] yields the first entry of column x and callers must use
+    -- :_displace(y) to reach the rest. Indexing [x][y] must fail here exactly
+    -- as it does in DF.
+    local function column(entries)
+        return setmetatable({}, {
+            __index = function(_, k)
+                if k == '_displace' then
+                    return function(_, n) return entries[n] end
+                end
+                error('Cannot read field region_map_entry.' .. tostring(k)
+                      .. ': not found.')
+            end,
+        })
+    end
+
+    function w.make_world(width, height, fill)
+        local cols = {}
+        for x = 0, width - 1 do
+            local col = {}
+            for y = 0, height - 1 do
+                local e = {elevation = 150, rainfall = 50, vegetation = 50,
+                           temperature = 50, evilness = 30, drainage = 50,
+                           volcanism = 30, savagery = 30, salinity = 0,
+                           geo_index = 0, finder_rank = 0}
+                if fill then fill(e, x, y) end
+                col[y] = e
+            end
+            cols[x] = column(col)
+        end
+        df.global.world.world_data = {
+            world_width = width, world_height = height, region_map = cols,
+        }
+        return cols
+    end
+
     dfhack.timeout = function() return nil end
     dfhack.timeout_active = function() end
 
@@ -283,8 +322,37 @@ function M.new()
     -- what the game does with it. Default behaviour mirrors DF: Enter clears one
     -- popup, Escape pops the top screen.
     local gui = {}
+    -- Set w.async_keys = true to model DF properly: gui.simulateInput QUEUES a
+    -- key, and DF feeds it on a LATER frame. Code that checks whether a screen
+    -- closed in the same call always reads the pre-keystroke screen. That is a
+    -- real bug this stub could not catch while it applied keys synchronously.
+    local queued = {}
+    function w.flush_keys()
+        local pending = queued
+        queued = {}
+        for _, q in ipairs(pending) do w.apply_key(q.scr, q.key) end
+    end
+
+    function w.apply_key(scr, key)
+        if w.on_key then return w.on_key(scr, key) end
+        local popups = df.global.world.status.popups
+        if key == 'CLOSE_MEGA_ANNOUNCEMENT' and #popups > 0 then
+            popups:erase(0); return
+        end
+        if key == 'D_PAUSE' then
+            df.global.pause_state = not df.global.pause_state; return
+        end
+        if (key == 'LEAVESCREEN' or key == 'LEAVESCREEN_ALL') and #stack > 1 then
+            w.pop()
+        end
+    end
+
     gui.simulateInput = function(scr, key)
         table.insert(w.keys, {key = key, screen = scr and scr.vtype})
+        if w.async_keys then
+            table.insert(queued, {scr = scr, key = key})
+            return
+        end
         if w.on_key then return w.on_key(scr, key) end
         local popups = df.global.world.status.popups
         if key == 'CLOSE_MEGA_ANNOUNCEMENT' and #popups > 0 then
@@ -355,6 +423,13 @@ function M.load(world, path)
         end
         if name == 'utils' then
             return {listpairs = function(list)
+                -- Reject nil: `world.job_list` does not exist in this build and
+                -- reading it yields nil, which used to sail straight through
+                -- here. Erroring makes a wrong field name a test failure rather
+                -- than something only the live game finds.
+                if list == nil then
+                    error('listpairs called with nil -- wrong field name?')
+                end
                 local items = (world.job_list or {})
                 local i = 0
                 return function()

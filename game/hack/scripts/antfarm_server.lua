@@ -664,7 +664,18 @@ local function handle_command(cmd)
     elseif verb == 'nick' then
         -- `nick <unit_id> <nickname>` -- used by the Twitch !name command so a
         -- viewer can claim a migrant. Nicknames may contain spaces.
+        -- Two forms: "nick <id> <name>" sets one, "nick <id>" clears it.
+        -- The clear form matters: the client sends `nick 3 ` with an empty
+        -- name, and DFClient.send_cmd strips trailing whitespace, so the
+        -- pattern below has to match an id on its own. Requiring %s+ meant
+        -- every nickname clear was silently dropped -- a viewer who released
+        -- their dwarf left it nicknamed, so it still counted as claimed and
+        -- nobody could ever take it.
         local id_str, nickname = rest:match('^(%S+)%s+(.*)$')
+        if not id_str then
+            id_str = rest:match('^(%S+)%s*$')
+            nickname = ''
+        end
         local id = tonumber(id_str)
         if id then
             local u = df.unit.find(id)

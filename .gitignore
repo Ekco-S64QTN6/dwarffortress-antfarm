@@ -7,6 +7,8 @@ game/antfarm_cmd/
 game/antfarm_cmd.json
 game/antfarm_plan.json
 game/antfarm_worlds.txt
+legends/*
+!legends/.gitkeep
 antfarm.log
 
 # --- Operator data: credentials and per-viewer state -----------------------

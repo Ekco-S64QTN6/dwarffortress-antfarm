@@ -48,11 +48,24 @@ class AntfarmEngine:
         self.bootstrapped = False
         self.last_lockdown = 0.0
 
-        # Set ANTFARM_AUTOBUILD=1 to let the engine site and build a Dreamfort
-        # by itself on a fort that has not been anchored yet. It is off by
-        # default on purpose: on a hand-built fortress it would designate
-        # several thousand tiles somewhere the player did not choose.
-        self.autobuild = os.environ.get("ANTFARM_AUTOBUILD", "").strip().lower() in ("1", "true", "yes", "on")
+        # Whether to site and build a Dreamfort automatically.
+        #
+        # Default is "auto": build it on a fort that has clearly never been
+        # touched, leave an established one alone. Defaulting to off looked
+        # cautious and was simply wrong -- a fresh embark then sat with nothing
+        # designated, every dwarf idle beside the wagon, which is exactly the
+        # failure this project exists to prevent. Defaulting to on unconditionally
+        # is also wrong: on a hand-built fortress it would designate several
+        # thousand tiles somewhere the player did not choose.
+        #
+        # ANTFARM_AUTOBUILD=1 forces it on, =0 forces it off.
+        env = os.environ.get("ANTFARM_AUTOBUILD", "").strip().lower()
+        if env in ("1", "true", "yes", "on"):
+            self.autobuild = True
+        elif env in ("0", "false", "no", "off"):
+            self.autobuild = False
+        else:
+            self.autobuild = None   # decide from the fort itself
 
         # How far ahead a rival dwarf must score before the camera moves.
         # docs/automation-research.md derives 150; the value had drifted to 40,
@@ -151,6 +164,8 @@ class AntfarmEngine:
             # Keep the fort visibly busy: workshops and constructions first.
             "prioritize -aq defaults",
         ]
+        if self.autobuild is None:
+            self.autobuild = self._fort_looks_untouched()
         if self.autobuild:
             # Survey the embark, anchor a Dreamfort near the dwarves and turn
             # auto mode on. Idempotent: on a fort that is already anchored it
@@ -164,6 +179,35 @@ class AntfarmEngine:
         for p in payloads:
             self.client.execute_dfhack(p)
             time.sleep(0.25)
+
+    def _fort_looks_untouched(self):
+        """Is this a fresh embark nobody has built on yet?
+
+        The signal is the build plan the game side reports: `anchored` is false
+        until someone runs `antfarm_blueprint here` or `autostart`, and step 1
+        means nothing has been applied. Combined with a small population, that
+        is an embark that has just landed.
+
+        Deliberately conservative: anything unclear reads as "leave it alone".
+        """
+        state = self.client.latest_state or {}
+        build = state.get("build")
+        if build is None:
+            # No plan data at all -- the blueprint script did not answer, so we
+            # do not know what this fort is. Do not designate anything.
+            logging.info("Autobuild: no build plan reported; leaving the fort alone.")
+            return False
+        if build.get("anchored"):
+            logging.info("Autobuild: this fort is already anchored; not re-siting it.")
+            return False
+        pop = (state.get("fortress_stats") or {}).get("pop", 0)
+        if pop > 20:
+            logging.info("Autobuild: %d citizens already here; this is not a fresh "
+                         "embark, leaving it alone.", pop)
+            return False
+        logging.info("Autobuild: fresh embark (%d citizens, no anchor) -- siting a "
+                     "Dreamfort. Set ANTFARM_AUTOBUILD=0 to stop this.", pop)
+        return True
 
     def _run_loop(self):
         while self.running:

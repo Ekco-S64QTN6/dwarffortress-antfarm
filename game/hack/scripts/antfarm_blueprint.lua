@@ -442,7 +442,11 @@ end
 function count_pending_builds(zs)
     local n = 0
     -- utils.listpairs is the supported way to walk DF's intrusive job list.
-    for _, job in utils.listpairs(df.global.world.job_list) do
+    -- The list is world.jobs.list, NOT world.job_list -- the latter does not
+    -- exist in this build and reading it raises, which killed every 'build'
+    -- gate and, because auto_tick called gate_open unguarded, stopped auto
+    -- mode dead at the first such step with nothing in the log.
+    for _, job in utils.listpairs(df.global.world.jobs.list) do
         if job and (job.job_type == df.job_type.ConstructBuilding
                 or job.job_type == df.job_type.DestroyBuilding) then
             if not zs then
@@ -970,7 +974,15 @@ local function auto_tick()
         if dfhack.isMapLoaded() and plan.anchor and plan.step <= #PLAN then
             if os.time() - (plan.last_run or 0) >= MIN_STEP_INTERVAL then
                 local step = PLAN[plan.step]
-                local open, why, pending = gate_open(step, plan)
+                -- Guarded: an error in here used to propagate out of auto_tick
+                -- and break the timeout chain, so auto mode stopped for the
+                -- rest of the session without saying anything.
+                local safe, open, why, pending = pcall(gate_open, step, plan)
+                if not safe then
+                    dfhack.printerr('antfarm_blueprint: gate check failed for step '
+                        .. tostring(plan.step) .. ': ' .. tostring(open))
+                    open, why, pending = false, 'gate check error', -1
+                end
                 if open then
                     plan.gate_since = 0
                     plan.gate_pending = -1
@@ -1027,7 +1039,11 @@ function progress()
     end
     if plan.anchor and dfhack.isMapLoaded() then
         local open, why = true, 'done'
-        if step then open, why = gate_open(step, plan) end
+        if step then
+            local safe, o2, w2 = pcall(gate_open, step, plan)
+            if safe then open, why = o2, w2
+            else open, why = false, 'gate check error: ' .. tostring(o2) end
+        end
         out.ready = open and true or false
         out.status = why
     else
@@ -1194,7 +1210,8 @@ local function cmd_status()
         print('  the checklist is complete.')
         return
     end
-    local open, why = gate_open(step, plan)
+    local safe, open, why = pcall(gate_open, step, plan)
+    if not safe then open, why = false, 'gate check error: ' .. tostring(open) end
     print(('  next:   %s (%s) -- %s'):format(step.bp, step.level, step.note))
     print(('  gate:   %s -- %s'):format(open and 'OPEN' or 'HELD', why))
     if plan.stalled then

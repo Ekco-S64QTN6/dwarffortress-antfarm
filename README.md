@@ -35,13 +35,14 @@ Documentation:
 
 **Jump to:**
 [Running it](#1-running-it) ·
-[Building the fortress](#2-building-the-fortress) ·
-[Director AI](#3-the-director-ai-and-dashboard) ·
-[Keeping the game running](#4-keeping-the-game-running) ·
-[Twitch](#5-twitch-integration) ·
-[Linux notes](#6-linux-compatibility) ·
-[Tests](#7-tests) ·
-[Worldgen](#8-worldgen-presets)
+[Choosing an embark](#2-choosing-where-to-embark) ·
+[Building the fortress](#3-building-the-fortress) ·
+[Director AI](#4-the-director-ai-and-dashboard) ·
+[Keeping the game running](#5-keeping-the-game-running) ·
+[Twitch](#6-twitch-integration) ·
+[Linux notes](#7-linux-compatibility) ·
+[Tests](#8-tests) ·
+[Worldgen](#9-worldgen-presets)
 
 ---
 
@@ -77,7 +78,34 @@ camera) · `r` force rotate · `b` next build step · `B` build auto on/off ·
 
 ---
 
-## 2. Building the fortress
+## 2. Choosing where to embark
+
+`antfarm_embark` picks the site, because nothing else did — the guided build
+chose where to put the fort *within* an embark, but a human still had to sit
+through site selection first.
+
+It ranks every 4x4 rectangle in the world on what the rest of the system
+actually needs, with **flatness first**: the surface fort is what viewers see,
+and elevation running through it reads as rubble on camera. Then no aquifer
+(the geology survey refuses to dig one), not evil, not freezing, and enough
+trees for the first workshops. Two passes — a whole-world scan of the region
+map, then DF's own live aquifer verdict for each shortlisted rectangle.
+
+```text
+antfarm_embark scan     rank the sites, change nothing
+antfarm_embark          take the best usable one and embark
+```
+
+From the site screen, **Ctrl-N / Ctrl-P** step the cursor through the shortlist
+so you can look at each on camera, and **Ctrl-E** embarks where the cursor is.
+Each step prints the site's stats and DF's aquifer/salt verdict.
+
+Measured on a 129x129 Tolkien-preset world: 15,800 rectangles considered, 11
+survived, best one anchored at 100% usable footprint.
+
+---
+
+## 3. Building the fortress
 
 The dwarves build a genuine fort, not a warren of empty rooms. `antfarm_blueprint`
 surveys the embark's geology, picks levels for each layer, and walks the
@@ -102,10 +130,10 @@ entrance, farms, workshops, a hospital, tavern, guildhalls and apartments —
 furnished, stockpiled and with rooms assigned. Manager orders are queued
 automatically and the orders libraries are imported as the fort matures.
 
-Set `ANTFARM_AUTOBUILD=1` to have the dashboard run `autostart` for you when a
-fort loads unanchored. It is **off by default on purpose**: on a fortress you
-built by hand it would designate several thousand tiles somewhere you did not
-choose.
+The dashboard does this for you on a **fresh embark** — no anchor, nothing
+designated, a starting population. On an established fort it leaves well alone,
+because designating several thousand tiles somewhere you did not choose is not a
+recoverable mistake. `ANTFARM_AUTOBUILD=1` forces it on, `=0` forces it off.
 
 Three things keep the build honest rather than merely optimistic:
 
@@ -135,7 +163,7 @@ without touching code.
 
 ---
 
-## 3. The Director AI and dashboard
+## 4. The Director AI and dashboard
 
 Every citizen carries a live interest score: stress and stress *volatility*,
 noble and legendary status, spatial crowding, relationship-graph degree, and
@@ -163,7 +191,7 @@ and sealed the fort away from its own food the moment a siege was announced.
 
 ---
 
-## 4. Keeping the game running
+## 5. Keeping the game running
 
 The thing that stops an unattended fortress is almost never the fortress. It is
 a dialog box. The miners break into the caverns, DF puts up *"You have
@@ -211,7 +239,7 @@ driving the fort, so playing by hand with the bridge idle is unaffected.
 
 ---
 
-## 5. Twitch integration
+## 6. Twitch integration
 
 Optional. With no credentials configured the bridge stays dormant and everything
 above works unchanged.
@@ -253,7 +281,7 @@ knowledge graph — see `antfarm/plugins/README.md`.
 
 ---
 
-## 6. Linux compatibility
+## 7. Linux compatibility
 
 These are applied and verified, and are load-bearing — the game crashed on every
 save load without them:
@@ -279,7 +307,7 @@ save load without them:
 
 ---
 
-## 7. Tests
+## 8. Tests
 
 Dwarf Fortress cannot be run headlessly, so everything that can be checked
 without it, is:
@@ -304,20 +332,43 @@ popup.
 
 ---
 
-## 8. Worldgen presets
+## 9. Worldgen presets
 
 Under **Design New World with Parameters**:
 
-* **`TOLKIEN_EPIC_LARGE`** — 257×257, 1050 years, dense civilisations, high
-  beast density, deep caverns, dramatic topography.
-* **`TOLKIEN_EPIC_MEDIUM`** — 129×129, 500 years, same savagery and megabeasts,
-  generates far faster.
+* **`TOLKIEN_EPIC_LARGE`** — 257×257, 25 years of history, dense civilisations,
+  high beast density, deep caverns, dramatic topography.
+* **`TOLKIEN_EPIC_MEDIUM`** — 129×129, 25 years, same savagery and megabeasts,
+  generates in about a minute.
 
-Elevation constraints on both are tuned to avoid generator rejections.
+Both are tuned for the guided build, and the cavern settings are load-bearing:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| `LEVELS_ABOVE_LAYER_1` | 20 | Dreamfort occupies a surface level, a farming level and twelve rock levels. At the stock 5 the fort is dug straight into cavern 1 — damp-stone cancellations and blocking discovery popups. |
+| `CAVERN_LAYER_OPENNESS_MIN` | 70 | The stock 0–100 rolls a fresh value per layer, and a low roll gives twisting one-tile passages that wreck cavern pathing. |
+| `CAVERN_LAYER_PASSAGE_DENSITY_MAX` | 40 | High density turns an open cavern back into a warren. |
+| `CAVERN_LAYER_WATER_MAX` | 20 | Flooded caverns drown the fort the moment the miners break through. |
+| `END_YEAR` | 25 | Enough history for a populated world; 500 years on the medium map took long enough to be worth aborting. |
+
+Generate one without touching the keyboard:
+
+```bash
+cd game && ./df -gen 1 RANDOM TOLKIEN_EPIC_MEDIUM
+```
+
+> This world is deliberately hostile — 40 titans, 80 demons, night creatures and
+> werebeasts. There is no military automation, so an unattended fort here will
+> eventually lose. Turn the `*_NUMBER` and `*_CAP` values down for a fort that
+> survives long enough to finish building.
 
 ---
 
 ## Credits
+
+Antfarm itself was written by **Claude Opus 5** (Anthropic), from requirements,
+direction and testing by Michael Schellhorn. See `LICENSE` for the full
+authorship note and every upstream licence.
 
 * **Dwarf Fortress** by Bay 12 Games.
 * **[DFHack](https://github.com/DFHack/dfhack)** — the scripting layer all of

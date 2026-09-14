@@ -174,6 +174,8 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | File | Role |
 | --- | --- |
 | `game/hack/scripts/antfarm_server.lua` | The bridge. Streams state, drains commands, owns the camera lock. |
+| `game/hack/scripts/antfarm_embark.lua` | Ranks every 4x4 rectangle in the world for flatness and picks the embark. |
+| `game/hack/scripts/antfarm_legends.lua` | `exportlegends` into `legends/` instead of the game directory. |
 | `game/hack/scripts/antfarm_ui.lua` | Modal watchdog: dismisses popups and blocking viewscreens, classifies and clears pauses, answers petitions. Driven by the server's poll. |
 | `game/hack/scripts/antfarm_overlay.lua` | `overlay` widget showing mode + current lock inside `dwarfmode`. |
 | `game/hack/scripts/antfarm_blueprint.lua` | Surveys geology and drives the Dreamfort build checklist. |
@@ -519,6 +521,53 @@ Where it stops, and where the work here is:
 * It has no notion of an operator being present; it assumes full autonomy.
 * It replaces the fort planner entirely. We drive Dreamfort instead, so its
   `plan_*.cpp` is reference, not something to port.
+
+### 6.7.3. Field Names And Types Verified Against A Live Fort
+
+Four things that looked right, passed the stub tests, and were wrong in the game.
+All four were found by driving a real fortress with `dfhack-run`; none could have
+been found by reading the code.
+
+1. **`df.global.world.job_list` does not exist. It is `world.jobs.list`.**
+   Reading the wrong one raises, and because `auto_tick` called `gate_open`
+   unguarded, the first `gate = 'build'` step killed the timeout chain and auto
+   mode stopped for the rest of the session with nothing in the log. Gate checks
+   are now wrapped in `pcall` everywhere, and `tests/df_stub.lua` makes
+   `utils.listpairs(nil)` an error so a wrong field name fails a test.
+
+2. **`world_data.region_map` is `region_map_entry**`.** `region_map[x]`
+   dereferences to the *first entry of column x*, not to an indexable array;
+   `region_map[x][y]` silently reads a field named `y` off an entry and raises.
+   The y index is `region_map[x]:_displace(y)`.
+
+3. **`in_embark_aquifer` and friends are real Lua booleans, not 0/1.** They are
+   `BooleanEnum` in df-structures and DFHack converts them. Testing `v ~= 0`
+   reports every flag as SET, because in Lua `false ~= 0` is true -- a boolean is
+   never equal to a number. That made every candidate embark look like it had an
+   aquifer.
+
+4. **`gui.simulateInput` QUEUES a key; DF feeds it on a later frame.** Checking
+   whether the screen closed in the same call always reads the pre-keystroke
+   screen. The watchdog dismissed screens correctly but recorded every one as a
+   failure. Verification is now deferred to a later tick (`confirm_pending`),
+   which is also what df-ai's `timeout_sameview` does. `tests/df_stub.lua` has an
+   `async_keys` mode that models this.
+
+**The lesson: `pgrep -f`, field names, and enum types all need checking against
+the running game.** `game/dfhack-run <command>` drives a live fortress from a
+shell without touching the keyboard, and is the fastest way to verify any of it.
+
+### 6.7.4. Wire Formats Need Testing From Both Ends
+
+`DFClient.send_cmd` strips the command string. `set_nickname(id, "")` therefore
+arrives as a bare `nick <id>` with no trailing space, and the server's
+`'^(%S+)%s+(.*)$'` pattern -- which requires whitespace -- rejected it. Every
+nickname *clear* was silently dropped, so a viewer who released their dwarf left
+it nicknamed, it still counted as claimed, and nobody could ever take it.
+
+`tests/test_wire.py` now generates command files with the real client and parses
+them with the real Lua reader, covering the clear form, accented names, quotes,
+backslashes and above-BMP emoji. Add a case there for any new verb.
 
 ### 6.8. Two Save Menus, And Generated Worlds Are In The Other One
 

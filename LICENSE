@@ -1,0 +1,207 @@
+================================================================================
+ Antfarm
+================================================================================
+
+Antfarm is the companion this repository adds. It is:
+
+    antfarm/                        the Python engine, dashboard and chat bridge
+    game/hack/scripts/antfarm_*.lua the in-game DFHack scripts
+    tests/                          the test suite and the df/dfhack stub
+    docs/, tools/*.sh, start_antfarm.sh, README.md, AGENTS.md
+    game/dfhack-config/init/*.init  and the Antfarm entries in game/data/init/
+
+Everything else in this repository is redistributed upstream software and is
+covered by its own licence, reproduced in full below.
+
+Antfarm is released under the zlib licence -- the same licence as DFHack and
+df-ai, the two projects it builds on and ports from, so that code can move
+between them without friction.
+
+--------------------------------------------------------------------------------
+
+AUTHORSHIP
+
+Antfarm was written by Claude Opus 5, Anthropic's AI assistant, from
+requirements, direction, testing and review by Michael Schellhorn. The code
+review recorded in docs/code-review-2026-09-13.md was carried out by Claude
+Sonnet 4.6. Prior art ported from other projects is credited in section 3 below
+and in the source files that use it.
+
+The copyright line below names a person rather than the author because a
+copyright holder has to be a legal person: an AI system cannot hold or be
+assigned copyright, and in the United States and most other jurisdictions
+purely machine-generated material may attract no copyright protection at all.
+Whatever rights do exist in this work rest with the person who directed and
+published it. The licence grant is unaffected either way, and the authorship
+credit above is the accurate one.
+
+Copyright (c) 2026 Michael Schellhorn
+
+This software is provided 'as-is', without any express or implied warranty. In
+no event will the authors be held liable for any damages arising from the use of
+this software.
+
+Permission is granted to anyone to use this software for any purpose, including
+commercial applications, and to alter it and redistribute it freely, subject to
+the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim
+   that you wrote the original software. If you use this software in a product,
+   an acknowledgment in the product documentation would be appreciated but is
+   not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
+
+
+================================================================================
+ REDISTRIBUTED SOFTWARE
+================================================================================
+
+This repository ships Dwarf Fortress, DFHack and four companion utilities so
+that the whole thing runs without a separate install. None of it is ours. The
+terms below are reproduced verbatim from the files that ship with each package.
+
+Bay 12's terms permit redistribution of Dwarf Fortress only free of charge; this
+repository is distributed free of charge and is not sold, bundled with anything
+sold, or placed behind any payment.
+
+
+================================================================================
+ 1. DWARF FORTRESS -- Bay 12 Games
+================================================================================
+
+Verbatim from game/readme.txt:
+
+--------------------------------------------------------------------------------
+*** COPYRIGHT INFORMATION ****************************
+
+Copyright (c) 2002-2021.  All rights are retained by Tarn Adams, save the following:  you may redistribute the unmodified binary and accompanying files, provided you do so free of charge.  You may distribute modified text files from the data and raw folders (see the readme.txt in those folders for more information).  We'd appreciate it if you credit yourself or an alias somewhere for any modifications to prevent confusion with vanilla DF (it helps with bug reports).  If you'd like to distribute a modified version of the game or portion of the archive and are worried about copyright infringement, please contact Tarn Adams at toadyone@bay12games.com.
+
+This software is still in development, and this means that there are going to be problems, including serious problems that, however unlikely, might damage your system or the information stored on it.  Please be aware of this before playing.
+
+--------------------------------------------------------------------------------
+
+Verbatim from game/readme.txt, covering the SDL port and related code:
+
+--------------------------------------------------------------------------------
+The game uses code by Svein Ove Aas (OpenGL upgrade) and Bernard Helyer (who did the SDL port).  This code was distributed under the following license (and will be made available at some point at bay12games.com/games after it's tested a bit more):
+
+Copyright (c) 2008, Svein Ove Aas, parts by Tarn Adams, portions Bernard Helyer
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+*** Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+*** Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+*** The names of Tarn Adams, Zach Adams, Svein Ove Aas, Bernard Helyer and Bay 12 Games may not be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Additional changes to the SDL Port and related main loop/input code by Theodorick Grau, who provided the following license:
+
+Full license, ownership, and copyright is hereby granted to Tarn Adams, Zach Adams, Bay 12 Games(represensations thereof), and all assignees they may designate; for all source code submitted by me to any of the above mentioned parties.
+
+I retain no rights to any source code once it has been submitted.  I also make no guarantees as to the fitness or mechantibility of any source code.  All source code, submitted by me, and its binary products are wholly property of the above named parties.
+
+Signed this day the 11th of January 2009,
+Theodorick Grau
+
+--------------------------------------------------------------------------------
+
+Further Dwarf Fortress documentation ships alongside the game and is not
+reproduced here: game/readme.txt (full), game/release notes.txt,
+game/file changes.txt, game/command line.txt and game/README.linux.
+
+
+================================================================================
+ 2. DFHACK
+================================================================================
+
+DFHack is distributed under the zlib licence, with some MIT- and BSD-licensed
+components. The complete licence text, including every third-party component
+(clsocket, dirent, JSON.lua, jsoncpp, libexpat, libzip, linenoise, Lua, luacov,
+luafilesystem, lua-profiler, protobuf, tinythread, tinyxml, UTF-8-decoder,
+xlsxio and alt-getopt), is reproduced in full in:
+
+    game/hack/LICENSE.rst
+
+Copyright (c) 2009-2012, Petr Mrazek and the DFHack contributors.
+
+The Dreamfort blueprint set that Antfarm's guided build drives ships with
+DFHack, in game/blueprints/library/dreamfort.csv, and is by Mike Stewart
+("Wittzeng"). The quickfort blueprint system it uses is by Joel Meador and the
+DFHack team.
+
+
+================================================================================
+ 3. DF-AI -- Ben Lubar
+================================================================================
+
+Antfarm's modal watchdog (game/hack/scripts/antfarm_ui.lua) ports solutions from
+df-ai: the viewscreen-to-interface-key table, is_dwarfmode_viewscreen, the
+announcement-type pause classification, the stuck-pause backstop and the
+post-unpause camera restore. df-ai is at https://github.com/BenLubar/df-ai and
+is by Ben Lubar, originally written in Ruby by Yoann Guillot (jjyg).
+
+df-ai is distributed under the zlib licence:
+
+--------------------------------------------------------------------------------
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any
+damages arising from the use of this software.
+
+Permission is granted to anyone to use this software for any
+purpose, including commercial applications, and to alter it and
+redistribute it freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must
+   not claim that you wrote the original software. If you use this
+   software in a product, an acknowledgment in the product
+   documentation would be appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and
+   must not be misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source
+   distribution.
+--------------------------------------------------------------------------------
+
+
+================================================================================
+ 4. BUNDLED UTILITIES (tools/)
+================================================================================
+
+--- Dwarf Therapist -------------------------------------------------------------
+
+Copyright (c) 2009, 2010 Trey Stout (chmod), and subsequent maintainers.
+MIT licence; the full text ships at tools/share/doc/LICENSE.txt.
+
+--- Legends Browser -------------------------------------------------------------
+
+Legends Browser, by Markus Riegel (robertjanetzko) and contributors.
+https://github.com/robertjanetzko/LegendsBrowser -- MIT licence.
+
+--- SoundSense-RS ---------------------------------------------------------------
+
+SoundSense-RS by prixt, a Rust reimplementation of SoundSense by zwei.
+https://github.com/prixt/soundsense-rs -- MIT licence.
+The soundpacks it plays are by the SoundSense community and carry their own
+terms; none are bundled here.
+
+--- Announcement Window+ --------------------------------------------------------
+
+Announcement Window+ by ldog/Rose and contributors.
+See tools/announcement/readme.md.
+
+
+================================================================================
+ 5. GRAPHICS AND RAW DATA
+================================================================================
+
+Any tileset, graphics pack or modified raw under game/data/ and game/raw/ that
+did not ship with vanilla Dwarf Fortress belongs to its own author. Bay 12's
+terms explicitly permit redistribution of modified files from the data and raw
+folders; see the readme.txt inside those folders for each pack's own terms.

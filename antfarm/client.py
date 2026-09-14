@@ -267,7 +267,14 @@ class DFClient:
         return self.send_cmd(f"probe {unit_id}")
 
     def set_nickname(self, unit_id, nickname):
-        return self.send_cmd(f"nick {unit_id} {nickname}")
+        """Set a unit's nickname, or clear it when `nickname` is empty.
+
+        send_cmd strips the command, so an empty nickname arrives at the server
+        as a bare "nick <id>" with no trailing space. The server accepts that
+        form as "clear it"; both halves of this have to agree, which is what
+        tests/test_wire.py checks.
+        """
+        return self.send_cmd(f"nick {unit_id} {nickname}".rstrip())
 
     def disconnect(self):
         self.connected = False
