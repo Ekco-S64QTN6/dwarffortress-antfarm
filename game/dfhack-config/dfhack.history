@@ -1,0 +1,155 @@
+autolabor 1
+autolabor enable
+exterminate this
+fastdwarf 1 1
+autolabor 1
+autodump
+exterminate goat
+exterminate donkey
+exterminate bugbat
+exterminate sheep
+exterminate elephant
+exterminate undead
+exterminate
+autolabor 0
+fastdwarf 1 1
+source add water 7
+source add water 2
+fastdwarf 1 0
+fastdwarf 1 1
+fastdwarf 1 0
+source add water 0
+source clear
+source add water 2
+source clear
+source add water 2
+remove-stress --all
+fillneeds --all
+full-heal --all
+unforbid all
+autodump
+autolabor 1
+deramp
+source clear
+source add water 2
+autodump
+full-heal --all
+exterminate TROLL
+exterminate BEAK_DOG
+exterminate
+autolabor 0
+autodunp
+autodump
+fastdwarf 1 1
+full-heal --all
+autolabor 1
+weather clear
+deramp
+full-heal --all
+source add water 0
+source clear
+source add water 2
+source clear
+source add water 2
+weather rain
+clean map mud
+fillneeds --all
+remove-stress --all
+full-heal --all
+deramp
+autodump
+full-heal --all
+autodump
+autolabor 1
+autodump
+source clear
+full-heal --all
+source clear
+source add water 2
+source clear
+source add water 2
+full-heal --all
+autodump
+full-heal --all
+remove-stress --all
+fillneeds --all
+full-heal --all_citizens ; remove-stress --all ; fillneeds --all
+fillneeds --all
+remove-stress --all
+full-heal --all_citizens
+full-heal --all --citizens; remove-stress -a
+remove-stress all
+remove-stress -v
+remove-stress -a
+remove-stress -a -v
+full-heal --all
+full-heal --all --citizens
+autolabor 0
+autolabor 1
+full -heal --all --citizens
+fastdwarf 1 1
+autolabor 1
+source add water 0
+autodump
+source clear
+source add water 2
+autolabor 1
+source clear
+source
+source clear
+source add water 2
+clean map mud
+clean map
+clean-map
+cleanall mud snow
+cleanall
+clean mud
+clean
+autolabor 0
+source add water 7
+unforbid all
+autodump
+fastdwarf 1 1
+autolabor 1
+fastdwarf 1 0
+autodump
+exterminate Undead
+exterminate
+autolabor 0
+autodump
+weather clear
+weather rain
+source clear
+source add water 2
+autodump
+deramp
+autodump
+fastdwarf 1 1
+autodump
+fastdwarf 1 0
+fastdwarf 1 1
+fastdwarf 1 0
+exterminate this
+autolabor enable
+autodump
+source add water 0
+source clear
+source add water 2
+source clear
+source add water 0
+source clear
+source add water 3
+unforbid all
+unforbid everything
+autodump
+exterminate this
+autodump
+fastdwarf 1 1
+autodump
+autolabor 1
+autodump
+source clear
+source add water 0
+fastdwarf 1 0
+fastdwarf
+antfarm_server

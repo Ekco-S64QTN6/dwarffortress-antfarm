@@ -1,0 +1,32 @@
+# --- Antfarm runtime state -------------------------------------------------
+# The IPC bridge writes these five times a second; the plan file tracks build
+# progress for one particular fort.
+game/antfarm_state.json
+game/antfarm_state.json.tmp
+game/antfarm_cmd/
+game/antfarm_cmd.json
+game/antfarm_plan.json
+game/antfarm_worlds.txt
+antfarm.log
+
+# --- Operator data: credentials and per-viewer state -----------------------
+# config/ and state/ belong to whoever runs the fort, not to the repository.
+# The Twitch OAuth token lives in config/twitch.json; never commit it.
+config/*
+!config/*.example.json
+state/*
+!state/.gitkeep
+
+# --- Game output -----------------------------------------------------------
+game/data/save/
+game/gamelog.txt
+game/*.log
+game/errorlog.txt
+game/region*-*
+game/*.bmp
+game/data/movies/
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/

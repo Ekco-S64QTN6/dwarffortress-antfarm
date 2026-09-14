@@ -1,0 +1,149 @@
+# This file runs when a map is loaded in adventure or fort mode, after any
+# onLoad.init files (which run earlier, when the world is loaded).
+#
+# Fortress automation for Antfarm mode. Adapted from DFHack's own
+# hack/examples/init/onMapLoad_dreamfort.init, which is the configuration the
+# Dreamfort blueprints are designed around.
+#
+# This is the right place for standing automation: it is declarative, the user
+# can edit it without touching code, and DFHack applies it on every load.
+# The Python engine deliberately does NOT duplicate these commands.
+
+#######################################################
+# Antfarm IPC bridge for the companion TUI (app/tui.py)
+#######################################################
+# Starts the state/command file bridge once the map is live; it idles cheaply
+# until a client connects, and hands the camera back to the player 5s after the
+# client goes away. Comment out for a completely untouched game.
+antfarm_server start
+
+#######################################################
+# Keeping an unattended fort clickable
+#######################################################
+# DFHack's `confirm` plugin adds modal are-you-sure dialogs. Every one of them
+# is a screen an unattended fortress would sit on forever waiting for a keypress
+# nobody is there to make. df-ai disables it at startup for the same reason;
+# antfarm_server also does this when it starts, and this line covers the case
+# where the bridge is commented out but the fort still runs unattended.
+disable confirm
+
+# The modal watchdog itself lives in antfarm_ui and is driven by
+# antfarm_server's poll, so it needs no line here. Check on it with:
+#   antfarm_ui status      what it has dismissed
+#   antfarm_ui screen      what is on screen right now, and whether it can close it
+# Popup dismissal is always on while the bridge runs; dismissing other blocking
+# viewscreens only happens while a client is actually driving the fort, so a
+# human playing by hand never has a menu closed under them.
+
+#######################################################
+# Labor
+#######################################################
+# ON. An unattended fort cannot build itself without labor automation: with it
+# off, only the 2 dwarves who embarked with the mining labor ever dig, and the
+# other 5+ stand idle next to thousands of designated tiles. Measured on a live
+# fort: enabling autolabor took the assigned miners from 2 to 4 immediately and
+# digging continued normally.
+#
+# AGENTS.md 6.2.4 used to warn this caused "background labor-flag memory
+# conflicts" and kept it off. That warning is not trustworthy: the `autolabor 0`
+# meant to enforce it lived in dfhack_PyLNP.init and failed on EVERY startup
+# with "World is not loaded", so the documented-off state was never actually in
+# force and the instability was never observed with it genuinely disabled.
+#
+# Caveat, stated honestly: tested over minutes, not over a multi-hour stream.
+# If the fort becomes unstable, comment this out and use `labormanager` or the
+# bundled Dwarf Therapist instead.
+enable autolabor
+
+# `labormanager` is the alternative; do not enable both.
+#enable labormanager
+
+# Make sure essential jobs get picked up even in a busy fort. This is the safe
+# half of labor automation and is always on.
+prioritize -aq defaults
+
+# Booze and food first. A fort that runs dry stops working long before it
+# starves: dwarves with no alcohol slow down and get miserable. `defaults` above
+# does not cover brewing or farm work, so add them explicitly -- these jump the
+# queue ahead of the thousands of mining jobs the guided build designates.
+# ('Brew' is the job type in 0.47; there is no 'BrewDrink'.)
+prioritize -a Brew PlantSeeds ProcessPlants ProcessPlantsBarrel MillPlants PrepareMeal
+
+#######################################################
+# Food, farming and livestock
+#######################################################
+# Don't cook ingredients that are worth more as something else.
+on-new-fortress ban-cooking tallow; ban-cooking honey; ban-cooking oil; ban-cooking seeds; ban-cooking brew; ban-cooking fruit; ban-cooking mill; ban-cooking thread; ban-cooking milk; ban-cooking booze
+
+enable autofarm
+autofarm default 30
+autofarm threshold 150 GRASS_TAIL_PIG
+
+enable seedwatch
+seedwatch all 30
+
+# Auto-assign nesting birds to nestboxes and stop fertile eggs being eaten.
+# autonestbox exposes plugin_enable, so `enable` is the correct verb here --
+# `autonestbox start` just logs "autonestbox is not running" and does nothing.
+enable zone nestboxes autonestbox
+
+# Livestock caps. Saved in the savegame, so only set them on a new fort --
+# that way your in-game adjustments are never overwritten.
+on-new-fortress enable autobutcher
+on-new-fortress autobutcher target 2 2 2 2 new
+on-new-fortress autobutcher target 2 2 2 2 DOG
+on-new-fortress autobutcher target 1 1 2 2 CAT
+# Geese are the primary bone and leather source; let younglings mature first.
+on-new-fortress autobutcher target 50 50 14 2 BIRD_GOOSE
+# Wool animals, kept low so they don't strip the grazing.
+on-new-fortress autobutcher target 2 2 4 2 ALPACA SHEEP LLAMA
+# Pigs: milk and meat, zero grazing maintenance.
+on-new-fortress autobutcher target 5 5 6 2 PIG
+# Everything else is a net loss to feed.
+on-new-fortress autobutcher target 0 0 0 0 HORSE YAK DONKEY WATER_BUFFALO GOAT CAVY BIRD_DUCK BIRD_GUINEAFOWL
+on-new-fortress autobutcher autowatch
+
+#######################################################
+# Production and stock management
+#######################################################
+enable workflow
+enable buildingplan
+enable automelt
+enable tailor
+autounsuspend start
+
+# Fulfil high-volume orders before slower once-daily ones.
+repeat -name orders-sort -time 1 -timeUnits days -command [ orders sort ]
+
+# Keep shearing and milking on the books.
+repeat -name autoShearCreature -time 14 -timeUnits days -command [ workorder ShearCreature ]
+
+#######################################################
+# Housekeeping
+#######################################################
+# Force dwarves to drop tattered clothing instead of clinging to the scraps.
+repeat -name cleanowned -time 1 -timeUnits months -command [ cleanowned X ]
+repeat -name clean -time 1 -timeUnits months -command [ clean all ]
+# combine-plants / combine-drinks are NOT scheduled here: both require a
+# selected stockpile or container (`-stockpile`/`-container`) and unattended
+# they just log "Select an item or building" every cycle.
+
+# Warn when someone is actually starving rather than merely hungry.
+repeat -name warn-starving -time 10 -timeUnits days -command [ warn-starving ]
+
+# Doors left stuck open by a cancelled job. Was in the PyLNP-generated
+# dfhack_PyLNP.init, which has been removed along with the launcher that wrote
+# it; the rest of that file duplicated the housekeeping jobs above.
+repeat -name stuckdoors -time 1 -timeUnits months -command [ fix/stuckdoors ]
+
+# Stop caravans bringing barrels of blood and other useless liquids.
+fix/blood-del
+
+# Faster trading at the depot.
+tweak fast-trade
+
+# Item temperature updates in bigger steps. Meaningful FPS win on a long fort
+# and safe with [TEMPERATURE:YES] -- unlike turning temperature off, which
+# segfaults DF within seconds (AGENTS.md 6.2.1). Also inherited from the
+# removed dfhack_PyLNP.init.
+tweak fast-heat

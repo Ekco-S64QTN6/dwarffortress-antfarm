@@ -1,0 +1,15 @@
+# This file runs when DFHack is initialized, when Dwarf Fortress is first
+# started, before any world or save data is loaded.
+#
+# You can extend or override DFHack's default configuration by adding commands
+# to this file.
+
+#######################################################
+# Loading TWBT Default multirender                    #
+#######################################################
+
+# Number of levels to render
+# multilevel 6
+
+# making the shadow a little darker, better for a bright tileset.
+# multilevel shadowcolor 0 0 0 0.5

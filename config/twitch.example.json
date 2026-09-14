@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to twitch_config.json and fill in. Environment variables TWITCH_NICK / TWITCH_TOKEN / TWITCH_CHANNEL override these. Never commit a real token.",
+  "nick": "your_bot_account",
+  "token": "oauth:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "channel": "your_channel"
+}
