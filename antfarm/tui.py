@@ -62,6 +62,35 @@ def query_legends_db(hist_id):
         logging.error(f"Error querying SQLite: {e}")
         return None, []
 
+# Physiological gauges. DF keeps hunger, thirst and sleepiness as counters that
+# tick UP from zero as a dwarf is deprived -- they are NOT in unit["needs"],
+# which holds social and spiritual desires under enum names (Socialize,
+# DrinkAlcohol, PrayOrMeditate) and has no sleep/food/thirst entry at all.
+#
+# Thresholds are the points at which DF considers the dwarf in trouble: drowsy,
+# starving, dehydrated.
+VITAL_THRESHOLDS = {
+    "sleepiness_timer": 57600,
+    "hunger_timer": 75000,
+    "thirst_timer": 50000,
+}
+
+
+def vital_reserve(vitals, key, scale=1000):
+    """How much of a vital is left, `scale` = full, 0 = critical.
+
+    Returns None when the counter is absent, which is how the Lua side reports a
+    field its build does not have (-1) rather than guessing a value.
+    """
+    critical = VITAL_THRESHOLDS.get(key)
+    if not critical:
+        return None
+    raw = (vitals or {}).get(key, -1)
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool) or raw < 0:
+        return None
+    return max(0.0, 1.0 - (raw / float(critical))) * scale
+
+
 def render_progress_bar(value, max_value, width=15, color="cyan"):
     if max_value <= 0:
         return "░" * width
@@ -412,24 +441,36 @@ class DwarfStatsWidget(Static):
         agi_bar = render_progress_bar(agility, 2000, width=12, color="#00F5FF")
         tgh_bar = render_progress_bar(toughness, 2000, width=12, color="#00F5FF")
         
-        needs_list = unit.get("needs", [])
-        needs_dict = {n.get("type"): n.get("level", 0) for n in needs_list}
-        
-        sleep_lvl = needs_dict.get("sleep", 0)
-        drink_lvl = needs_dict.get("drink", 0)
-        food_lvl = needs_dict.get("food", 0)
-        
-        sleep_bar = render_progress_bar(sleep_lvl, 1000, width=12, color="#FF2D95")
-        drink_bar = render_progress_bar(drink_lvl, 1000, width=12, color="#00F5FF")
-        food_bar = render_progress_bar(food_lvl, 1000, width=12, color="#FFC857")
+        # These gauges used to read unit["needs"], looking for "sleep" / "food" /
+        # "drink". Those keys do not exist and never did: DF's need list holds
+        # social and spiritual desires (Socialize, DrinkAlcohol, PrayOrMeditate)
+        # under enum names, and has no entry for sleep, hunger or thirst at all.
+        # Every lookup missed, so all three bars sat at zero forever.
+        #
+        # The real values are counters on the unit, published as "vitals". They
+        # tick UP from 0 as the dwarf is deprived, so the bar shows what is left
+        # rather than the raw counter -- a full bar is a rested, fed dwarf.
+        vitals = unit.get("vitals", {})
+        sleep_lvl = vital_reserve(vitals, "sleepiness_timer")
+        food_lvl = vital_reserve(vitals, "hunger_timer")
+        drink_lvl = vital_reserve(vitals, "thirst_timer")
+
+        def vital_bar(lvl, color):
+            if lvl is None:
+                return "[grey37]  unavailable[/]"
+            return render_progress_bar(lvl, 1000, width=12, color=color)
+
+        sleep_bar = vital_bar(sleep_lvl, "#FF2D95")
+        drink_bar = vital_bar(drink_lvl, "#00F5FF")
+        food_bar = vital_bar(food_lvl, "#FFC857")
         
         skills = unit.get("skills", [])
         skills_str = ""
         if skills:
             for s in skills[:3]:
                 rating_val = s.get("rating", 0)
-                bar = render_progress_bar(rating_val, 15, width=12, color="#B64CFF")
-                skills_str += f"• [cyan]{s.get('name')[:12]}:[/] {rating_val}/15 {bar}\n"
+                bar = render_progress_bar(rating_val, 20, width=12, color="#B64CFF")
+                skills_str += f"• [cyan]{s.get('name')[:12]}:[/] {rating_val}/20 {bar}\n"
         else:
             skills_str = "• No notable training.\n"
             

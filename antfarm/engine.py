@@ -48,6 +48,11 @@ class AntfarmEngine:
         self.bootstrapped = False
         self.last_lockdown = 0.0
 
+        # Lifecycle event subscriptions for autonomous fortress maintenance
+        self.event_bus.subscribe("MigrantWaveArrival", self._on_migrant_wave)
+        self.event_bus.subscribe("CitizenDeath", self._on_citizen_death)
+        self.event_bus.subscribe("FortressAnnouncement", self._on_announcement)
+
         # Whether to site and build a Dreamfort automatically.
         #
         # Default is "auto": build it on a fort that has clearly never been
@@ -315,7 +320,40 @@ class AntfarmEngine:
                     self.interest_events["global"] = []
                 self.interest_events["global"].append(event)
                 logging.info(f"Event: Added global interest boost from event '{event.name}' (+{event.weight} weight)")
-            
+
+    # Lifecycle nudges. These do NOT hold self.lock: send_cmd writes a command
+    # file, and holding the lock across that I/O is the B-04 bug -- the listener
+    # thread needs the lock while the engine thread is blocked on disk. The lock
+    # guards shared engine state, and none of these touch any.
+    #
+    # They are nudges, not schedules. The standing cadence lives in the Lua
+    # subsystems (each gates itself on a wall clock) and in onMapLoad.init; what
+    # Python adds is "react now, do not wait for the next interval", which is
+    # the one thing the game side cannot know.
+
+    def _on_migrant_wave(self, event):
+        logging.info("Migrant wave: appointing nobles, assigning quarters, checking the hall.")
+        self.client.send_cmd("nobles appoint")
+        self.client.send_cmd("quarters assign")
+        self.client.send_cmd("locations hall")
+
+    def _on_citizen_death(self, event):
+        logging.info("Citizen death: checking memorial slabs and vacant posts.")
+        self.client.send_cmd("autoslab check")
+        self.client.send_cmd("nobles appoint")
+
+    def _on_announcement(self, event):
+        text = (event.payload.get("text") or "").lower()
+        # "will be leaving soon" is also a caravan announcement, and re-queueing
+        # export goods as the wagons pull out is wasted work -- match arrival.
+        if "caravan" in text and "leaving" not in text:
+            logging.info("Caravan arriving: queueing trade goods.")
+            self.client.send_cmd("trade depot")
+            self.client.send_cmd("trade goods")
+        elif "ghost" in text:
+            logging.info("Ghost announcement: checking memorial slabs.")
+            self.client.send_cmd("autoslab check")
+
     def calculate_interest_score(self, d_id, base_stress=0, profession="", density=0,
                                 relations=0, sample=False):
         """Score a dwarf's watchability.

@@ -27,7 +27,11 @@ steer the whole thing.
 
 Documentation:
 [fortress construction](docs/fortress-build.md) ·
-[code review & outcomes](docs/code-review-2026-09-13.md) ·
+[community blueprints research](docs/FORT_BLUEPRINTS_RESEARCH.md) ·
+[DF 0.47 RAW modding & bugfixes](docs/DF_0.47_RAW_MODDING_AND_BUGFIXES_REPORT.md) ·
+[handoff to Claude](docs/HANDOFF_TO_CLAUDE.md) ·
+[automation failure taxonomy](docs/Gemini38_Automation_Gaps.md) ·
+[live fort gaps postmortem](docs/AUTOMATION-GAPS.md) ·
 [settings audit](docs/settings-audit.md) ·
 [modding notes](docs/modding.md) ·
 [automation research](docs/automation-research.md) ·

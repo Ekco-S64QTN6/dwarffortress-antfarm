@@ -56,9 +56,18 @@ Two processes that share nothing but a directory of files.
 game/  (Dwarf Fortress + DFHack, Lua)          antfarm/  (Python)
   antfarm_server.lua   the bridge   ──state──►   client.py    transport
   antfarm_ui.lua       watchdog     ◄──cmds───   engine.py    Director AI
-  antfarm_blueprint.lua  build              tui.py / twitch.py
+  antfarm_blueprint.lua  build                   tui.py / twitch.py
   antfarm_embark.lua   site picker
   antfarm_lever.lua    lockdown
+  antfarm_autoslab.lua memorializer
+  antfarm_nobles.lua   appointments
+  antfarm_locations.lua zones/temples
+  antfarm_orders.lua   order reaper
+  antfarm_metals.lua   vein survey
+  antfarm_trade.lua    depot/caravan
+  antfarm_defence.lua  traps/guards
+  antfarm_quarters.lua bedrooms
+  antfarm_military.lua squads/training
 ```
 
 **Transport** (`antfarm/client.py` ⟷ `antfarm_server.lua`): `game/antfarm_state.json` is rewritten
@@ -153,5 +162,29 @@ silently disagreed before (a stripped trailing space made every nickname *clear*
 - **`game/data/init/` settings are load-bearing for stability.** `[TEMPERATURE:YES]` and
   `[PRINT_MODE:2D]` are not preferences — changing either crashes or hangs the game. AGENTS.md 6.2
   has the reasoning; verify before trusting any claim there, including that one.
+- **Seed stockpiles must have `max_barrels = 0`.** Farmers haul the entire barrel across the fort for
+  one seed, cancelling all other planting jobs with `Item inaccessible` (AGENTS.md 6.10).
+- **Soap cannot be purchased from caravans.** It must be produced locally; `ban-cooking tallow` in
+  `onMapLoad.init` is required so cooks do not eat the fat needed for soap (AGENTS.md 6.12).
+- **Werebeasts smash normal doors.** They transform on the full moon (10th/11th) and are Level-2 building
+  destroyers. Isolate suspects behind raising drawbridges, not doors (AGENTS.md 6.13).
+- **Wagon roads must be 3-wide paved stone (`b-o-r`).** Dirt corridors sprout trees that block foreign
+  trade wagons within 1–2 years (AGENTS.md 6.15).
+- **Fortifications must be roofed with an overhang.** Constructed fortifications lack roofs; climbing
+  invaders clamber directly over unroofed walls into the fort (AGENTS.md 6.20).
+- **Wild animal training decays.** Captured war beasts revert to wild unless continually re-trained or
+  bred to produce permanently domesticated offspring (AGENTS.md 6.21).
+- **Stepladders get stolen.** Herbalists picking fruit in trees get stranded when haulers steal their
+  ladder; gather ground fruit only to avoid starvation (AGENTS.md 6.22).
+- **Marksdwarves require quivers.** Without a quiver (`ITEM_QUIVER`), dwarves cannot equip bolts and
+  charge into melee with their crossbows as clubs (AGENTS.md 6.24).
+- **Set military backpacks to 0.** Soldiers stash rations that rot inside barracks and bedrooms, creating
+  miasma clouds and chronic stress (AGENTS.md 6.25).
+- **Hospital patients drink water, not booze.** Patients refuse alcohol and die of thirst unless clean
+  water is delivered in buckets; stagnant pool water causes 100% wound infection (AGENTS.md 6.26).
+- **Never sell wooden containers to Elves.** Offering the wooden bin or barrel itself offends the Elves
+  and triggers trade abandonment and war (AGENTS.md 6.27).
+- **Magma buildings require melting point ≥ 12,000 °U.** Non-magma-safe stone melts instantly upon contact
+  with magma, destroying the workshop and flooding the room (AGENTS.md 6.29).
 
 `config/` and `state/` hold operator data and are gitignored; `antfarm/` is code only.

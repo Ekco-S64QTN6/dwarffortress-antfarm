@@ -52,6 +52,13 @@ local DREAMFORT_ZOFF = {
     apartments = -7,     -- and four more below it, via repeat(down 5)
 }
 local DREAMFORT_DEPTH = 12   -- levels of rock needed below the industry level
+-- Never put the top dug level directly under open sky. Surface pools, rain
+-- runoff and tree roots all live at surface-1, and a farming level there shares
+-- a ceiling with whatever is standing on the grass. Two is the shallowest depth
+-- that reliably clears them; three would be safer still, but on a fort with only
+-- two soil layers it lands the farms in bare rock, where no plot can be built
+-- without irrigating the floor first.
+local MIN_FARMING_DEPTH = 2
 
 -- A quickfort run that reports success but touches nothing has not actually
 -- done the step. Retry it this many times before giving up and moving on with
@@ -229,6 +236,34 @@ local WALKABLE = {
     [df.tiletype_shape.SAPLING] = true,
 }
 
+-- Water and aquifer must be judged over the area actually built on, not the
+-- little probe used to decide whether a level is soil or rock.
+--
+-- This is the bug that put a live fort's farming level into two lakes:
+-- `classify_level` samples an 11x11 box (SURVEY_SAMPLE = 5) while the blueprint
+-- occupies 45x45 (FOOTPRINT). Measured on that fort, the chosen farming level
+-- held 37 water tiles across the footprint and zero inside the probe, so the
+-- `water == 0` test passed on a level that was part lake. Material can be
+-- sampled from the centre -- geology layers are flat -- but hazards cannot.
+local function scan_hazards(cx, cy, z)
+    local half = math.floor(FOOTPRINT / 2)
+    local counts = {water = 0, aquifer = 0, total = 0}
+    for x = cx - half, cx + half, 3 do
+        for y = cy - half, cy + half, 3 do
+            local mat = tile_material(x, y, z)
+            if mat then
+                counts.total = counts.total + 1
+                if has_aquifer(x, y, z) then counts.aquifer = counts.aquifer + 1 end
+                if mat == df.tiletype_material.POOL or mat == df.tiletype_material.RIVER
+                        or mat == df.tiletype_material.BROOK then
+                    counts.water = counts.water + 1
+                end
+            end
+        end
+    end
+    return counts
+end
+
 local function classify_level(cx, cy, z)
     local counts = {solid = 0, open = 0, floor = 0, empty = 0,
                     soil = 0, rock = 0, water = 0, aquifer = 0, total = 0}
@@ -279,7 +314,8 @@ function survey(cx, cy)
     local surface_z
     for z = mz - 1, 1, -1 do
         local c = classify_level(cx, cy, z)
-        if c.total > 0 and c.floor > c.total * 0.5 and c.water == 0 then
+        if c.total > 0 and c.floor > c.total * 0.5 and c.water == 0
+                and scan_hazards(cx, cy, z).water == 0 then
             surface_z = z
             break
         end
@@ -296,19 +332,47 @@ function survey(cx, cy)
 
     -- Farming wants soil; it is dug in the uppermost soil layer below grade.
     -- surface_z is walkable, so the first *diggable* level is surface_z - 1.
-    local farming_z
-    for z = surface_z - 1, math.max(1, surface_z - 30), -1 do
+    local function soil_level_is_good(z)
         local c = classify_level(cx, cy, z)
-        if c.aquifer == 0 and c.water == 0 and c.soil > c.total * 0.5 then
-            farming_z = z
+        if c.soil <= c.total * 0.5 then return false end
+        local h = scan_hazards(cx, cy, z)
+        return h.aquifer == 0 and h.water == 0
+    end
+
+    local farming_z, farming_mode
+    -- Preferred: dry soil at or below the minimum depth.
+    for z = surface_z - MIN_FARMING_DEPTH, math.max(1, surface_z - 30), -1 do
+        if soil_level_is_good(z) then
+            farming_z, farming_mode = z, 'soil'
             break
         end
     end
-    -- Embarks with no soil column still need somewhere to farm; fall back to
-    -- three levels down and let the player move it.
-    levels.farming = farming_z or math.max(1, surface_z - 3)
-    table.insert(report, ('farming   z=%d%s'):format(levels.farming,
-        farming_z and ' (soil)' or ' (no soil layer found -- consider relocating)'))
+    -- A shallow dry soil layer still beats farming in bare rock, so relax the
+    -- depth rule before abandoning soil altogether.
+    if not farming_z then
+        for z = surface_z - 1, math.max(1, surface_z - MIN_FARMING_DEPTH + 1), -1 do
+            if soil_level_is_good(z) then
+                farming_z, farming_mode = z, 'soil-shallow'
+                break
+            end
+        end
+    end
+    -- No dry soil anywhere under the anchor. Farming is still possible, but not
+    -- by digging a plot: the fort must either farm on the surface or muddy a
+    -- rock floor first (flood it, let it drain, build on the mud). Record which,
+    -- so the build does not silently designate plots that can never be built.
+    if not farming_z then
+        farming_z = math.max(1, surface_z - MIN_FARMING_DEPTH)
+        farming_mode = 'irrigate'
+    end
+    levels.farming = farming_z
+    levels.farming_mode = farming_mode
+    local mode_note = ({
+        ['soil'] = ' (soil)',
+        ['soil-shallow'] = ' (soil, shallower than preferred -- no deeper dry soil)',
+        ['irrigate'] = ' (NO dry soil: farm on the surface, or irrigate this rock floor to mud)',
+    })[farming_mode] or ''
+    table.insert(report, ('farming   z=%d%s'):format(levels.farming, mode_note))
 
     -- One rock anchor: the industry level. Everything below it is derived from
     -- Dreamfort's own offsets, so the blueprints land where /dig_all dug.
@@ -317,12 +381,14 @@ function survey(cx, cy)
         local c = classify_level(cx, cy, z)
         -- Must be *rock*, not merely solid: a soil layer passes a solidity test
         -- but Dreamfort's industry level wants stone for furniture and forges.
-        if c.aquifer == 0 and c.water == 0 and c.rock > c.total * 0.8 then
+        local h = scan_hazards(cx, cy, z)
+        if h.aquifer == 0 and h.water == 0 and c.rock > c.total * 0.8 then
             -- Check there is enough clean rock beneath for the whole stack.
             local clear = true
             for dz = 1, DREAMFORT_DEPTH - 1 do
                 local below = classify_level(cx, cy, z - dz)
-                if below.total == 0 or below.aquifer > 0 or below.water > 0
+                local bh = scan_hazards(cx, cy, z - dz)
+                if below.total == 0 or bh.aquifer > 0 or bh.water > 0
                         or below.solid < below.total * 0.6 then
                     clear = false
                     break
@@ -698,6 +764,25 @@ function apply_step(index, force)
     return true
 end
 
+function skip_step()
+    local plan = load_plan()
+    local old_step = plan.step
+    if old_step > #PLAN then
+        print('antfarm_blueprint: the checklist is already complete.')
+        return false
+    end
+    plan.step = old_step + 1
+    plan.last_run = os.time()
+    plan.gate_since = 0
+    plan.gate_pending = -1
+    plan.stalled = false
+    plan.stall_reason = nil
+    save_plan()
+    print(('antfarm_blueprint: skipped step %d (%s); now at step %d/%d'):format(
+        old_step, PLAN[old_step] and PLAN[old_step].bp or 'unknown', plan.step, #PLAN))
+    return true
+end
+
 -- ---------------------------------------------------------------- --
 -- picking a site without a human                                    --
 -- ---------------------------------------------------------------- --
@@ -899,18 +984,53 @@ function unstick(levels)
     return cleared
 end
 
+-- Cancel suspended construction jobs that are blocking the build gate.
+-- Removes uncompletable jobs and deconstructs any unbuilt building hulls.
+function cancel_suspended_builds(zs)
+    if not dfhack.isMapLoaded() then return 0 end
+    local plan = load_plan()
+    zs = zs or (plan.levels and fort_zlevels(plan.levels))
+    local count = 0
+    for _, job in utils.listpairs(df.global.world.jobs.list) do
+        if job and job.job_type == df.job_type.ConstructBuilding and job.flags and job.flags.suspend then
+            local ok, z = pcall(function() return job.pos.z end)
+            if not zs or (ok and z and zs[z]) then
+                local bld = dfhack.buildings.findAtTile(job.pos)
+                pcall(dfhack.job.removeJob, job)
+                if bld and not bld.flags.exists then
+                    pcall(dfhack.buildings.deconstruct, bld)
+                end
+                count = count + 1
+            end
+        end
+    end
+    if count > 0 then
+        print(('antfarm_blueprint: cancelled %d suspended construction job(s).'):format(count))
+    end
+    return count
+end
+
 -- Try to get a held gate moving again. Cheap remediations first.
 local function remediate(plan, reason)
     print('antfarm_blueprint: build stalled -- ' .. tostring(reason))
     -- Suspended constructions are the commonest cause and the cheapest fix.
     pcall(dfhack.run_command, 'unsuspend')
+    pcall(dfhack.run_command, 'unforbid', 'all')
     pcall(dfhack.run_command, 'prioritize -a Dig CarveFortification DetailWall '
                               .. 'ConstructBuilding DestroyBuilding')
     local cleared = unstick(plan.levels)
     if cleared > 0 then
         return ('cleared %d damp designation(s)'):format(cleared)
     end
-    return 'unsuspended constructions and re-prioritised digging'
+    -- If stalled on construction jobs for > 15 minutes and unsuspend failed, cancel unbuildable suspended jobs
+    local now = os.time()
+    if plan.stalled and plan.gate_since and (now - plan.gate_since > 900) then
+        local cancelled = cancel_suspended_builds()
+        if cancelled > 0 then
+            return ('cancelled %d unbuildable suspended construction job(s)'):format(cancelled)
+        end
+    end
+    return 'unsuspended constructions, unforbid items, and re-prioritised digging'
 end
 
 -- ---------------------------------------------------------------- --
@@ -1013,6 +1133,21 @@ end
 
 -- Published into the Antfarm state file so the dashboard and chat can report
 -- build progress without re-deriving any of this.
+-- Where the fort is and which z-level each layer landed on. Several other
+-- subsystems (trade, locations, military, mining) need to place things
+-- relative to the fort rather than re-deriving the geology themselves, and
+-- `progress()` is a dashboard payload, not a geometry accessor.
+function plan_summary()
+    local plan = load_plan()
+    if not plan.anchor then return nil end
+    return {
+        anchor = {x = plan.anchor.x, y = plan.anchor.y},
+        levels = plan.levels,
+        step = plan.step,
+        stalled = plan.stalled and true or false,
+    }
+end
+
 function progress()
     local plan = load_plan()
     local step = PLAN[plan.step]
@@ -1326,6 +1461,11 @@ elseif verb == 'auto' then
         print(('antfarm_blueprint: auto is %s. Usage: antfarm_blueprint auto on|off')
             :format(plan.auto and 'ON' or 'off'))
     end
+elseif verb == 'skip' then
+    skip_step()
+elseif verb == 'cancel_stuck' or verb == 'clearsuspended' then
+    local n = cancel_suspended_builds()
+    if n == 0 then print('antfarm_blueprint: no suspended construction jobs found.') end
 elseif verb == 'orders' then
     cmd_orders()
 elseif verb == 'reset' then
@@ -1342,6 +1482,6 @@ elseif verb == 'simple' then
     simple(depth)
 else
     print(dfhack.script_help and dfhack.script_help() or
-        'usage: antfarm_blueprint survey|here|autostart|status|list|next|auto|orders|'
-        .. 'unstick|reset|simple')
+        'usage: antfarm_blueprint survey|here|autostart|status|list|next|skip|auto|orders|'
+        .. 'unstick|cancel_stuck|reset|simple')
 end

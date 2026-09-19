@@ -158,6 +158,15 @@ class EventEngine:
             old_ids = {c.get("id") for c in old_citizens}
             new_ids = {c.get("id") for c in citizens}
             recent = " ".join(announcements).lower()
+            # Detect migrant wave arrivals
+            arrivals = new_ids - old_ids
+            if old_ids and len(arrivals) > 0:
+                self.event_bus.publish(DFEvent(
+                    name="MigrantWaveArrival",
+                    weight=500,
+                    half_life=180,
+                    payload={"count": len(arrivals), "ids": list(arrivals)}
+                ))
 
             for old_id in old_ids:
                 if old_id in new_ids:

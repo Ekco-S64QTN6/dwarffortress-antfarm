@@ -32,3 +32,10 @@ game/data/movies/
 __pycache__/
 *.py[cod]
 .venv/
+
+# --- Blueprint download staging --------------------------------------------
+# Raw upstream clones, archives and renders. Four of these carry their own
+# nested .git, which git would record as broken submodule links rather than
+# files. The curated blueprints the game actually loads live in
+# game/blueprints/community/ and are committed.
+community_blueprints/

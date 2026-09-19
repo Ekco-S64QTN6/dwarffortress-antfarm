@@ -92,8 +92,8 @@ Contains the primary simulation parameters.
     *   `[BABY_CHILD_CAP:100:1000]`: Limits children (`[MaxChildren:Max%OfAdults]`).
     *   `[AUTOSAVE:SEASONAL]`: Options: `NONE`, `SEASONAL`, `YEARLY`.
     *   `[AUTOBACKUP:YES]`: Backs up saves automatically on save.
-    *   `[TEMPERATURE:YES]`: Turning this to `NO` boosts FPS by turning off heat/cold transfers.
-    *   `[WEATHER:YES]`: Turning this to `NO` disables rain and wind, saving CPU cycles.
+    *   `[TEMPERATURE:YES]`: **Leave this as YES.** Turning this to `NO` segfaults the game engine within seconds of unpausing on saves with magma, fire, ice, or melt jobs due to null pointer dereferences in the item update loop (see AGENTS.md 6.2.1).
+    *   `[WEATHER:YES]`: Turning this to `NO` disables rain and wind, safely saving CPU cycles.
     *   `[CAVEINS:YES]`: Toggles collapse physics for unsupported roofs.
     *   `[INVADERS:YES]`: Toggles goblin sieges, beast attacks, and titan arrivals.
     *   `[GRAVEYARD:YES]`: Enables ghost encounters for unburied corpses.

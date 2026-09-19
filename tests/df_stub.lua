@@ -113,6 +113,17 @@ function M.new()
                 announcements = vector{},
                 flags = {combat = false, hunting = false, sparring = false},
             },
+            units = {
+                all = vector{},
+                active = vector{},
+            },
+            items = {
+                other = {
+                    SLAB = vector{},
+                },
+            },
+            manager_orders = vector{},
+            manager_order_next_id = 1,
         },
     }
 
@@ -130,7 +141,22 @@ function M.new()
                             MAGMA = 5, POOL = 6, RIVER = 7, BROOK = 8, AIR = 9}
     df.tile_dig_designation = {No = 0, Default = 1, UpDownStair = 2, UpStair = 3,
                                DownStair = 4, Channel = 5}
-    df.job_type = {ConstructBuilding = 1, DestroyBuilding = 2, Dig = 3}
+    df.job_type = {
+        ConstructBuilding = 1, DestroyBuilding = 2, Dig = 3,
+        EngraveSlab = 4, ConstructSlab = 5,
+    }
+    df.item_type = {SLAB = 1}
+    df.slab_engraving_type = {Memorial = 1}
+    df.manager_order = {
+        new = function(self)
+            return {
+                id = -1, job_type = -1, item_type = -1, item_subtype = -1,
+                mat_type = -1, mat_index = -1, amount_left = 1, amount_total = 1,
+                frequency = 0, hist_figure_id = -1,
+            }
+        end,
+        T_frequency = {OneTime = 0, Daily = 1, Monthly = 2, Seasonal = 3, Yearly = 4},
+    }
     -- tiletype id N encodes {material, shape} directly, so a test can write a
     -- column without a lookup table.
     df.tiletype = {attrs = setmetatable({}, {__index = function(_, tt)
@@ -207,10 +233,11 @@ function M.new()
         end
     end
 
-    df.global.world.units = {active = vector{}}
+    df.global.world.units = {all = vector{}, active = vector{}}
     function w.add_citizen(id, x, y, z)
         local u = {id = id, pos = {x = x, y = y, z = z}}
         units[id] = u
+        df.global.world.units.all:push(u)
         df.global.world.units.active:push(u)
         return u
     end
@@ -275,6 +302,7 @@ function M.new()
         isCitizen = function(u) return u and u.citizen ~= false end,
         isActive = function(u) return u and u.active ~= false end,
         getPosition = function(u) return u.pos end,
+        getReadableName = function(u) return u and (u.name or "Dwarf Name") or "Unknown" end,
     }
     dfhack.job = {checkDesignationsNow = function() end}
     -- ---- world map, for embark site selection ------------------- --

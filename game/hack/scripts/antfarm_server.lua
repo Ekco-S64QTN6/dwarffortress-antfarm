@@ -40,6 +40,15 @@ local MAX_CITIZENS = 200
 -- the key a player would press and reports what it dismissed. Set this to false
 -- to leave every blocking screen for a human.
 local AUTO_DISMISS_POPUPS = true
+
+-- Run the fort-management subsystems (orders, trade, nobles, locations,
+-- quarters, defence) from the poll loop.
+--
+-- Without this every one of those modules is dead code: each defines a tick()
+-- that nothing called, so the depot retry, the order reaper, noble
+-- appointments, bed assignment and the entrance traps only ever ran when a
+-- human typed the command by hand. An unattended fort managed nothing.
+local AUTO_MANAGE_FORT = true
 -- Concurrent probe requests to keep answers for, and how long each lives.
 local MAX_PROBES = 8
 local MAX_ANNOUNCEMENTS = 5
@@ -67,6 +76,10 @@ antfarm = antfarm or {
     ui_report = nil,
     ui_events = nil,
     ui_enabled = false,
+    subsystems_cache = nil,
+    subsystems_time = 0,
+    subsys_cursor = 0,
+    subsys_errors = {},
 }
 
 -- ---------------------------------------------------------------- --
@@ -207,7 +220,7 @@ local function unit_skills(unit)
     -- AGENTS.md 6.1.4: DF vectors are 0-indexed; ipairs() is not safe here.
     for i = 0, #soul.skills - 1 do
         local sk = soul.skills[i]
-        if sk and sk.rating and sk.rating > 0 then
+        if sk and sk.rating then
             table.insert(ranked, {id = sk.id, rating = sk.rating})
         end
     end
@@ -236,6 +249,29 @@ local function unit_attributes(unit)
     end
     if next(physical) == nil then physical = {STRENGTH = 0} end
     return {physical = physical}
+end
+
+-- Physiological state. These are NOT needs: DF keeps hunger, thirst and
+-- sleepiness as counters that tick upward from 0, while `personality.needs`
+-- holds social/spiritual desires (Socialize, PrayOrMeditate, ...) and has no
+-- Sleep/Food/Thirst entry at all. Reading the gauges out of the needs list is
+-- why SLEEP/FOOD/ALCOHOL on the dashboard were permanently empty.
+--
+-- Raw counters are published and left to Python to scale: Lua owns frame timing
+-- and the UI, Python owns scoring and presentation.
+local VITAL_COUNTERS = {'sleepiness_timer', 'hunger_timer', 'thirst_timer'}
+
+local function unit_vitals(unit)
+    local out = {}
+    if not unit then return out end
+    -- Field names on counters2 are not stable across builds (AGENTS.md 6.1.11),
+    -- and this runs inside the state serialiser, where a raise kills the whole
+    -- bridge silently. Guard every read.
+    for _, key in ipairs(VITAL_COUNTERS) do
+        local ok, val = pcall(function() return unit.counters2[key] end)
+        out[key] = (ok and type(val) == 'number') and val or -1
+    end
+    return out
 end
 
 local function unit_needs(unit)
@@ -345,6 +381,7 @@ local function unit_profile(unit, full)
     u.skills = unit_skills(unit)
     u.attributes = unit_attributes(unit)
     u.needs = unit_needs(unit)
+    u.vitals = unit_vitals(unit)
     u.thoughts = unit_thoughts(unit)
     u.health = unit_health(unit)
     u.kills = unit_kills(unit)
@@ -500,6 +537,121 @@ local function build_progress()
     return prog
 end
 
+local SUBSYSTEMS_REFRESH_SEC = 25
+
+local function subsystems_summary()
+    local now = wall_ms() / 1000
+    if antfarm.subsystems_cache and now - (antfarm.subsystems_time or 0) < SUBSYSTEMS_REFRESH_SEC then
+        return antfarm.subsystems_cache
+    end
+
+    local summary = {}
+
+    -- Each block below reads the field names the module's own report() actually
+    -- returns. An earlier version guessed them -- `rep.depot ~= nil` on a field
+    -- that is always a boolean, `rep.shortfall` and `rep.needs_goods` on
+    -- modules that publish neither -- so the dashboard cheerfully reported a
+    -- trade depot and full housing for a fort that had neither. Both halves
+    -- have to agree, the same way test_wire.py makes them agree for commands.
+    local function ask(name, fn)
+        local ok, mod = pcall(reqscript, name)
+        if not ok or type(mod) ~= 'table' or not mod.report then return end
+        local ok2, rep = pcall(mod.report)
+        if ok2 and type(rep) == 'table' then pcall(fn, rep) end
+    end
+
+    ask('antfarm_nobles', function(rep)
+        summary.nobles = {
+            filled_count = #(rep.filled or {}),
+            vacant_count = #(rep.vacant or {}),
+            vacant = arr(rep.vacant or {}),
+        }
+    end)
+
+    ask('antfarm_quarters', function(rep)
+        summary.housing = {
+            citizens = rep.citizens or 0,
+            beds = rep.beds or 0,
+            rooms = rep.rooms or 0,
+            owned = rep.owned or 0,
+            -- The number that matters: dwarves with no bedroom of their own.
+            shortfall = rep.unhoused or 0,
+        }
+    end)
+
+    ask('antfarm_trade', function(rep)
+        summary.trade = {
+            has_depot = rep.depot and true or false,
+            caravan_present = rep.caravan and true or false,
+            wants = arr(rep.wants or {}),
+        }
+    end)
+
+    ask('antfarm_orders', function(rep)
+        summary.orders = {
+            total = rep.orders or 0,
+            impossible = arr(rep.impossible or {}),
+        }
+    end)
+
+    ask('antfarm_locations', function(rep)
+        summary.locations = {
+            dining_z = rep.dining_z,
+            meeting_levels = arr(rep.meeting_levels or {}),
+            temples_wanted = arr(rep.temples_wanted or {}),
+        }
+    end)
+
+    ask('antfarm_defence', function(rep)
+        summary.defence = {
+            cage_traps = rep.cage_traps or 0,
+            restraints = rep.restraints or 0,
+            dogs = rep.dogs or 0,
+            spare_cages = rep.spare_cages or 0,
+        }
+    end)
+
+    ask('antfarm_military', function(rep)
+        summary.military = {
+            squads = rep.squads or 0,
+            soldiers = rep.soldiers or 0,
+            target = rep.target or 0,
+            metal = rep.metal,
+        }
+    end)
+
+    ask('antfarm_autoslab', function(rep)
+        summary.ghosts = {
+            ghost_count = rep.ghost_count or 0,
+            pending_engrave_orders = rep.pending_engrave_orders or 0,
+            blank_slabs = rep.blank_slabs or 0,
+        }
+    end)
+
+    -- metals.report() returns `missing` as an ARRAY of metal names. Walking it
+    -- with pairs() and keeping the key published the list indices (1, 2) as the
+    -- missing metals.
+    ask('antfarm_metals', function(rep)
+        summary.metals = {
+            missing = arr(rep.missing or {}),
+            martial = rep.martial,
+        }
+    end)
+
+    -- A subsystem that throws every cycle is invisible otherwise: its numbers
+    -- simply stop moving. Surface the error so the dashboard can say which one.
+    local errs = {}
+    for name, msg in pairs(antfarm.subsys_errors or {}) do
+        table.insert(errs, name .. ': ' .. msg)
+    end
+    table.sort(errs)
+    if #errs > 0 then summary.errors = arr(errs) end
+
+    antfarm.subsystems_cache = summary
+    antfarm.subsystems_time = now
+    return summary
+end
+
 local function collect_state()
     if not map_loaded() then
         return {
@@ -511,6 +663,7 @@ local function collect_state()
             announcements = EMPTY_ARRAY,
             mode = antfarm.mode,
             ui = antfarm.ui_report,
+            subsystems = nil,
         }
     end
 
@@ -543,6 +696,7 @@ local function collect_state()
         probe_data = probe_one,
         probes = probe_list,
         build = build_progress(),
+        subsystems = subsystems_summary(),
         -- What the modal watchdog is seeing and what it has dismissed. The
         -- dashboard shows it so a blocked fort is visible instead of silent.
         ui = antfarm.ui_report,
@@ -693,6 +847,41 @@ local function handle_command(cmd)
         if not ok then
             dfhack.printerr('antfarm_server: ui ' .. sub .. ' failed: ' .. tostring(err))
         end
+    elseif verb == 'nobles' then
+        local sub = (rest ~= '' and rest) or 'status'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_nobles ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: nobles failed: ' .. tostring(err)) end
+    elseif verb == 'orders' then
+        local sub = (rest ~= '' and rest) or 'reap'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_orders ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: orders failed: ' .. tostring(err)) end
+    elseif verb == 'trade' then
+        local sub = (rest ~= '' and rest) or 'depot'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_trade ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: trade failed: ' .. tostring(err)) end
+    elseif verb == 'defence' then
+        local sub = (rest ~= '' and rest) or 'traps'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_defence ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: defence failed: ' .. tostring(err)) end
+    elseif verb == 'military' then
+        local sub = (rest ~= '' and rest) or 'enlist'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_military ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: military failed: ' .. tostring(err)) end
+    elseif verb == 'quarters' then
+        local sub = (rest ~= '' and rest) or 'assign'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_quarters ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: quarters failed: ' .. tostring(err)) end
+    elseif verb == 'locations' then
+        local sub = (rest ~= '' and rest) or 'hall'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_locations ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: locations failed: ' .. tostring(err)) end
+    elseif verb == 'metals' then
+        local ok, err = pcall(dfhack.run_command, 'antfarm_metals ' .. rest)
+        if not ok then dfhack.printerr('antfarm_server: metals failed: ' .. tostring(err)) end
+    elseif verb == 'autoslab' or verb == 'slabs' then
+        local sub = (rest ~= '' and rest) or 'check'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_autoslab ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: autoslab failed: ' .. tostring(err)) end
     elseif verb == 'command' then
         if rest ~= '' then
             local ok, err = pcall(dfhack.run_command, rest)
@@ -851,6 +1040,43 @@ local function check_heartbeat()
     end
 end
 
+-- Fort-management subsystems, in the order they matter when several have work
+-- queued in the same cycle: stop wasting effort first (orders), then unblock
+-- the fort's only source of what it cannot make (trade), then people, rooms and
+-- defence.
+local SUBSYSTEMS = {
+    'antfarm_orders', 'antfarm_trade', 'antfarm_nobles',
+    'antfarm_locations', 'antfarm_quarters', 'antfarm_defence',
+    'antfarm_military',
+}
+
+-- One module per poll, round-robin. Each module already gates its own work on a
+-- wall clock (they run every 5-15 minutes), so a turn usually costs nothing but
+-- a function call -- but several of them walk every item or building in the
+-- fort when they do fire, and letting two do that in the same frame is a
+-- visible hitch. At 200ms a module gets a turn roughly once a second, which is
+-- far finer than any of their intervals.
+local function run_subsystems()
+    if not AUTO_MANAGE_FORT then return end
+    if not map_loaded() then return end
+
+    antfarm.subsys_cursor = (antfarm.subsys_cursor % #SUBSYSTEMS) + 1
+    local name = SUBSYSTEMS[antfarm.subsys_cursor]
+
+    local ok, mod = pcall(reqscript, name)
+    if not ok or type(mod) ~= 'table' or not mod.tick then return end
+
+    -- A raise inside a subsystem must never take the bridge down with it: this
+    -- runs in the same pcall chain that writes the state file, and a module
+    -- that throws every cycle would otherwise stop the dashboard dead.
+    local ok2, err = pcall(mod.tick)
+    if ok2 then
+        antfarm.subsys_errors[name] = nil
+    else
+        antfarm.subsys_errors[name] = tostring(err)
+    end
+end
+
 -- Drives antfarm_ui once per poll and folds its findings into the state file.
 --
 -- Screen dismissal is only armed while a client is actually driving the fort:
@@ -910,6 +1136,7 @@ poll = function()
             -- Run the modal watchdog before writing state, so a popup is
             -- reported in the same frame it is dismissed and never lost.
             run_ui_watchdog()
+            run_subsystems()
             write_state()
         end)
         if not ok then

@@ -1,0 +1,34 @@
+#dig label(dig)
+`,d,d,d,d,d,d,d,d,d,d,d,`,#
+d,d,`,`,`,`,`,d,d,d,`,d,d,#
+d,`,`,`,`,`,`,d,d,d,`,`,d,#
+d,`,`,`,`,`,`,d,d,d,d,d,d,#
+d,`,`,`,`,`,`,d,d,d,d,d,d,#
+d,`,`,`,`,`,`,d,d,d,d,d,d,#
+d,`,`,h,h,h,`,h,h,h,`,`,d,#
+d,d,d,d,d,d,`,`,`,`,`,`,d,#
+d,d,d,d,d,d,`,`,`,`,`,`,d,#
+d,d,d,d,d,d,`,`,`,`,`,`,d,#
+d,`,`,d,d,d,`,`,`,`,`,`,d,#
+d,d,`,d,d,d,`,`,`,`,`,d,d,#
+`,d,d,d,d,d,d,d,d,d,d,d,`,#
+#>,#,#,#,#,#,#,#,#,#,#,#,#,#
+`,d,d,d,d,d,d,d,d,d,d,d,`,#
+d,d,`,d,d,d,`,`,`,`,`,d,d,#
+d,`,`,d,d,d,`,`,`,`,`,`,d,#
+d,d,d,d,d,d,h,`,`,`,`,`,d,#
+d,d,d,d,d,d,h,`,`,`,`,`,d,#
+d,d,d,d,d,d,h,`,`,`,`,`,d,#
+d,`,`,`,`,`,`,`,`,`,`,`,d,#
+d,`,`,`,`,`,h,d,d,d,d,d,d,#
+d,`,`,`,`,`,h,d,d,d,d,d,d,#
+d,`,`,`,`,`,h,d,d,d,d,d,d,#
+d,`,`,`,`,`,`,d,d,d,`,`,d,#
+d,d,`,`,`,`,`,d,d,d,`,d,d,#
+`,d,d,d,d,d,d,d,d,d,d,d,`,#
+#,#,#,#,#,#,#,#,#,#,#,#,#,#
+#notes
+author: lazerus
+title: Ramp ring 7
+"tags: ramp, ring, stairs, access, dig, example"
+description: Ring of ramps at radius 7.

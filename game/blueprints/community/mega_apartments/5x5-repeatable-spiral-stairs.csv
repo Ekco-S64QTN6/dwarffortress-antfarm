@@ -1,0 +1,29 @@
+#dig label(dig) start(3;3;center)
+d,d,d,d,d
+d,r,,,d
+d,,,,d
+d,,,r,d
+d,d,d,d,d
+#>
+d,d,d,d,d
+d,,,,d
+d,r,,r,d
+d,,,,d
+d,d,d,d,d
+#>
+d,d,d,d,d
+d,,,r,d
+d,,,,d
+d,r,,,d
+d,d,d,d,d
+#>
+d,d,d,d,d
+d,d,r,,d
+d,,,,d
+d,,r,d,d
+d,d,d,d,d
+#notes
+title: 5x5 repeatable spiral stairs
+author: Gladius
+tags: stairs
+"description: Simple 5x5 spiral stairs, repeatable downwards indefinitely with DFHack's blueprint repeat tool."

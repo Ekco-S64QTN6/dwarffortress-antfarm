@@ -12,7 +12,7 @@ fail=0
 step() { printf '\n=== %s ===\n' "$1"; }
 
 step "Lua syntax"
-for f in game/hack/scripts/antfarm_*.lua; do
+for f in game/hack/scripts/antfarm_*.lua game/hack/scripts/fix/*.lua game/hack/scripts/dfmcp_helpers.lua game/hack/scripts/allneeds.lua game/hack/scripts/justice.lua game/hack/scripts/suspend.lua; do
     if luac -p "$f"; then echo "  ok    $f"; else echo "  FAIL  $f"; fail=1; fi
 done
 

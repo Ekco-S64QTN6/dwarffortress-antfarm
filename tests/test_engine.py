@@ -428,5 +428,225 @@ class AutoDefence(unittest.TestCase):
         self.assertNotIn("unpause", self.client.commands)
 
 
+class Vitals(unittest.TestCase):
+    """The SLEEP / FOOD / ALCOHOL gauges read unit["needs"] looking for "sleep",
+    "food" and "drink". Those keys do not exist: DF's need list holds social and
+    spiritual desires under enum names (Socialize, DrinkAlcohol, ...) and has no
+    physiological entry at all, so every lookup missed and all three bars sat at
+    zero forever. The counters live on the unit and are published as "vitals".
+    """
+
+    def test_needs_never_carry_the_physiological_keys(self):
+        """Guard the original mistake: if these ever appear in a need list, the
+        gauges may legitimately read them -- until then they must not."""
+        from antfarm.tui import VITAL_THRESHOLDS
+        needs = ["Socialize", "DrinkAlcohol", "PrayOrMeditate", "EatGoodMeal"]
+        for key in VITAL_THRESHOLDS:
+            self.assertNotIn(key, needs)
+        for stale in ("sleep", "food", "drink"):
+            self.assertNotIn(stale, VITAL_THRESHOLDS)
+
+    def test_a_rested_dwarf_reads_full_and_a_spent_one_reads_empty(self):
+        from antfarm.tui import vital_reserve
+        self.assertEqual(vital_reserve({"thirst_timer": 0}, "thirst_timer"), 1000)
+        self.assertEqual(vital_reserve({"thirst_timer": 50000}, "thirst_timer"), 0)
+        # Counters keep climbing past the critical point; the bar floors at 0
+        # rather than going negative and blowing up the renderer.
+        self.assertEqual(vital_reserve({"thirst_timer": 999999}, "thirst_timer"), 0)
+
+    def test_the_gauge_falls_as_the_counter_climbs(self):
+        from antfarm.tui import vital_reserve
+        half = vital_reserve({"hunger_timer": 37500}, "hunger_timer")
+        self.assertAlmostEqual(half, 500.0, places=6)
+
+    def test_a_missing_counter_is_unknown_not_zero(self):
+        """Lua reports -1 for a field its build does not have (AGENTS.md 6.1.11).
+        Showing that as an empty bar would read as 'this dwarf is dying'."""
+        from antfarm.tui import vital_reserve
+        self.assertIsNone(vital_reserve({"hunger_timer": -1}, "hunger_timer"))
+        self.assertIsNone(vital_reserve({}, "hunger_timer"))
+        self.assertIsNone(vital_reserve(None, "hunger_timer"))
+        self.assertIsNone(vital_reserve({"hunger_timer": "17"}, "hunger_timer"))
+
+    def test_the_lua_side_publishes_exactly_these_counters(self):
+        """Both halves must agree, the way test_wire.py makes them agree for
+        commands. A rename on either side fails here instead of silently
+        blanking the dashboard."""
+        import re
+        from antfarm.tui import VITAL_THRESHOLDS
+        with open("game/hack/scripts/antfarm_server.lua", encoding="utf-8") as f:
+            src = f.read()
+        block = re.search(r"local VITAL_COUNTERS = \{(.*?)\}", src, re.S)
+        self.assertIsNotNone(block, "antfarm_server.lua no longer declares VITAL_COUNTERS")
+        published = set(re.findall(r"'([a-z_]+)'", block.group(1)))
+        self.assertEqual(published, set(VITAL_THRESHOLDS))
+
+
+class SubsystemLifecycleEvents(unittest.TestCase):
+    def setUp(self):
+        self.client = FakeClient()
+        self.engine = AntfarmEngine(self.client)
+
+    def test_migrant_wave_triggers_nobles_quarters_locations(self):
+        state1 = {"map_loaded": True, "citizens": [citizen(1)], "announcements": []}
+        self.engine._on_state_received(state1)
+        self.client.commands.clear()
+
+        # Migrant wave arrives (population jumps from 1 to 3)
+        state2 = {"map_loaded": True, "citizens": [citizen(1), citizen(2), citizen(3)],
+                  "announcements": ["Migrants have arrived."]}
+        self.engine._on_state_received(state2)
+
+        self.assertIn("nobles appoint", self.client.commands)
+        self.assertIn("quarters assign", self.client.commands)
+        self.assertIn("locations hall", self.client.commands)
+
+    def test_caravan_announcement_triggers_trade_goods(self):
+        state1 = {"map_loaded": True, "citizens": [citizen(1)], "announcements": []}
+        self.engine._on_state_received(state1)
+        self.client.commands.clear()
+
+        state2 = {"map_loaded": True, "citizens": [citizen(1)],
+                  "announcements": ["A caravan from the Mountainhomes has arrived."]}
+        self.engine._on_state_received(state2)
+
+        self.assertIn("trade goods", self.client.commands)
+
+    def test_citizen_death_triggers_autoslab_and_nobles(self):
+        state1 = {"map_loaded": True, "citizens": [citizen(1, name="Urist"), citizen(2, name="Kadol")],
+                  "announcements": []}
+        self.engine._on_state_received(state1)
+        self.client.commands.clear()
+
+        state2 = {"map_loaded": True, "citizens": [citizen(2, name="Kadol")],
+                  "announcements": ["Urist has been killed."]}
+        self.engine._on_state_received(state2)
+
+        self.assertIn("autoslab check", self.client.commands)
+        self.assertIn("nobles appoint", self.client.commands)
+
+
+class LifecycleHandlers(unittest.TestCase):
+    """B-04 again, in the handlers added for migrant waves, deaths and caravans.
+
+    send_cmd writes a command file. Holding self.lock across that I/O blocks the
+    listener thread on disk, which is the bug _handle_rotation was restructured
+    to avoid. The lock guards shared engine state; these handlers touch none.
+    """
+
+    HANDLERS = ("_on_migrant_wave", "_on_citizen_death", "_on_announcement")
+
+    def test_no_handler_sends_a_command_while_holding_the_lock(self):
+        import inspect
+        from antfarm.engine import AntfarmEngine
+        for name in self.HANDLERS:
+            src = inspect.getsource(getattr(AntfarmEngine, name))
+            if "with self.lock:" not in src:
+                continue
+            held = src.split("with self.lock:", 1)[1]
+            # Everything at deeper indentation is inside the block.
+            block = []
+            for line in held.splitlines()[1:]:
+                if line.strip() and not line.startswith(" " * 12):
+                    break
+                block.append(line)
+            self.assertNotIn("send_cmd", "\n".join(block),
+                             "%s calls send_cmd while holding self.lock" % name)
+
+    def test_the_standing_cadence_is_not_duplicated_in_python(self):
+        """The Lua subsystems already gate themselves on a wall clock and are
+        dispatched from the poll loop. A second timer in the engine loop ran
+        `orders reap` and `defence traps` every 120s, bypassing those gates and
+        putting standing fortress automation in the layer CLAUDE.md reserves for
+        onMapLoad.init."""
+        import inspect
+        from antfarm.engine import AntfarmEngine
+        src = inspect.getsource(AntfarmEngine)
+        self.assertNotIn("last_maintenance", src,
+                         "engine.py is running its own standing maintenance timer again")
+
+
+class SubsystemContracts(unittest.TestCase):
+    """The server aggregates each Lua subsystem's report() into antfarm_state.json.
+    That aggregator was written against guessed field names: it tested
+    `rep.depot ~= nil` on a field that is always a boolean, and read
+    `rep.shortfall` / `rep.needs_goods` from modules that publish neither. The
+    dashboard therefore reported a trade depot and full housing for a fort that
+    had neither, and the metals list published array indices instead of metal
+    names. Nothing failed -- the numbers were simply wrong.
+
+    These are the same both-halves-must-agree checks test_wire.py makes for
+    commands, applied to the state payload.
+    """
+
+    SERVER = "game/hack/scripts/antfarm_server.lua"
+
+    @staticmethod
+    def _read(path):
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+
+    @classmethod
+    def _report_keys(cls, module):
+        """Top-level keys the module's report() returns."""
+        import re
+        src = cls._read("game/hack/scripts/%s.lua" % module)
+        body = re.search(r"\nfunction report\(\)(.*?)\nend\n", src, re.S)
+        if not body:
+            return None
+        # Both shapes occur: a multi-line `return {` table, and a single-line
+        # one. Matching only the first silently skipped a module.
+        table = re.search(r"return \{(.*)\}", body.group(1), re.S)
+        if not table:
+            return None
+        keys = set(re.findall(r"(?:^|[{,])\s*([a-z_]+)\s*=", table.group(1), re.M))
+        return keys or None
+
+    def _ask_blocks(self):
+        """{module: {fields the aggregator reads off its report}}"""
+        import re
+        src = self._read(self.SERVER)
+        out = {}
+        for m in re.finditer(
+                r"ask\('(antfarm_[a-z]+)',\s*function\(rep\)(.*?)\n    end\)",
+                src, re.S):
+            out[m.group(1)] = set(re.findall(r"rep\.([a-z_]+)", m.group(2)))
+        return out
+
+    def test_the_aggregator_reads_fields_the_modules_actually_publish(self):
+        blocks = self._ask_blocks()
+        self.assertTrue(blocks, "no ask() blocks found -- did subsystems_summary change shape?")
+        for module, fields in blocks.items():
+            published = self._report_keys(module)
+            if published is None:
+                continue          # module has no literal-table report(); skip
+            missing = fields - published
+            self.assertFalse(
+                missing,
+                "%s: aggregator reads %s, which report() does not publish (it publishes %s)"
+                % (module, sorted(missing), sorted(published)))
+
+    def test_every_module_with_a_tick_is_actually_dispatched(self):
+        """Six modules defined tick() and nothing ever called them, so the fort
+        managed nothing unless a human typed the command."""
+        import glob, os, re
+        src = self._read(self.SERVER)
+        listed = set(re.findall(r"'(antfarm_[a-z]+)',", 
+                                re.search(r"local SUBSYSTEMS = \{(.*?)\}", src, re.S).group(1)))
+        for path in sorted(glob.glob("game/hack/scripts/antfarm_*.lua")):
+            name = os.path.basename(path)[:-4]
+            if name in ("antfarm_server", "antfarm_ui"):
+                continue          # driven directly by the poll loop
+            if re.search(r"^function tick\(\)", self._read(path), re.M):
+                self.assertIn(name, listed,
+                              "%s defines tick() but is not in the server's SUBSYSTEMS list, "
+                              "so it never runs" % name)
+
+    def test_the_dispatcher_is_called_from_the_poll_loop(self):
+        src = self._read(self.SERVER)
+        self.assertRegex(src, r"\n\s+run_subsystems\(\)",
+                         "run_subsystems() is defined but never called from poll()")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

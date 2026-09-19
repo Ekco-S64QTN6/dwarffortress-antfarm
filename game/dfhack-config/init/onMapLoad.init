@@ -135,6 +135,17 @@ repeat -name warn-starving -time 10 -timeUnits days -command [ warn-starving ]
 # dfhack_PyLNP.init, which has been removed along with the launcher that wrote
 # it; the rest of that file duplicated the housekeeping jobs above.
 repeat -name stuckdoors -time 1 -timeUnits months -command [ fix/stuckdoors ]
+repeat -name dead-units -time 1 -timeUnits months -command [ fix/dead-units ]
+repeat -name general-strike -time 14 -timeUnits days -command [ fix/general-strike -q ]
+repeat -name corrupt-jobs -time 1 -timeUnits months -command [ fix/corrupt-jobs ]
+repeat -name empty-wheelbarrows -time 1 -timeUnits months -command [ fix/empty-wheelbarrows -q ]
+repeat -name stuck-worship -time 1 -timeUnits months -command [ fix/stuck-worship -q ]
+repeat -name dry-buckets -time 1 -timeUnits months -command [ fix/dry-buckets ]
+repeat -name engravings -time 1 -timeUnits months -command [ fix/engravings -q ]
+repeat -name burial -time 14 -timeUnits days -command [ burial ]
+repeat -name autoslab -time 14 -timeUnits days -command [ antfarm_autoslab check ]
+repeat -name corrupt-equipment -time 1 -timeUnits months -command [ fix/corrupt-equipment ]
+repeat -name stuck-squad -time 1 -timeUnits months -command [ fix/stuck-squad ]
 
 # Stop caravans bringing barrels of blood and other useless liquids.
 fix/blood-del

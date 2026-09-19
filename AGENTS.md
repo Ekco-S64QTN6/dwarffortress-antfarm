@@ -180,6 +180,15 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | `game/hack/scripts/antfarm_overlay.lua` | `overlay` widget showing mode + current lock inside `dwarfmode`. |
 | `game/hack/scripts/antfarm_blueprint.lua` | Surveys geology and drives the Dreamfort build checklist. |
 | `game/hack/scripts/antfarm_lever.lua` | Queues high-priority pulls on levers named for defence. |
+| `game/hack/scripts/antfarm_autoslab.lua` | Automatic ghostly unit detection, slab construction, and memorial engraving. |
+| `game/hack/scripts/antfarm_nobles.lua` | Automated noble appointment scoring, high bookkeeper precision, and justice. |
+| `game/hack/scripts/antfarm_locations.lua` | Automated tavern, library, hospital, and deity temple zone creation. |
+| `game/hack/scripts/antfarm_orders.lua` | Cancellation reaper, impossible order pruning, and workflow enforcement. |
+| `game/hack/scripts/antfarm_metals.lua` | 3D mineral vein survey, metallurgy profile, and branch mining. |
+| `game/hack/scripts/antfarm_trade.lua` | Dedicated surface depot placement, caravan monitor, and auto-trading. |
+| `game/hack/scripts/antfarm_defence.lua` | Surface cage trap chokepoints and entrance watch-dog restraints. |
+| `game/hack/scripts/antfarm_quarters.lua` | Bedroom definition, room assignment, and furniture ordering. |
+| `game/hack/scripts/antfarm_worlds.lua` | Lists save-game worlds and which DF menu each one appears under. |
 | `antfarm/client.py` | Python transport. |
 | `antfarm/engine.py` | Director AI, interest scoring, knowledge graph, plugin host. |
 | `antfarm/twitch.py` | Twitch chat bridge. |
@@ -187,7 +196,7 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 ### 5.2. Transport
 *   **State** (`game/antfarm_state.json`): written atomically (tmp + rename) every 200ms. Contains `protocol`, `map_loaded`, `mode`, `follow_id`, `fortress_stats` (pop, year, season, fps, paused), `unit_data` (full profile of the focused dwarf incl. skills, attributes, needs, thoughts, health, kills), `citizens` (roster with id, name, nick, claimed, profession, current_job, stress, pos, density), `announcements`, `probe_data`, and `build` (guided-construction progress).
 
-    `build` is refreshed on a 5-second timer, not per frame: its gate check walks every map block on the fort's levels and would otherwise dominate the tick. Anything similarly expensive must be cached the same way.
+    `build` is refreshed on a 10-second timer, not per frame: its gate check walks every map block on the fort's levels and would otherwise dominate the tick. Anything similarly expensive must be cached the same way.
 *   **Commands** (`game/antfarm_cmd/*.json`): **one command per file**, written tmp-then-rename, drained and deleted by the server each tick in lexical filename order. The client names them `%08d-<pid>.json` so the sort is the send order.
 
     A single shared command file **cannot** work here: the once-a-second heartbeat overwrites any queued command inside one 200ms tick, and chat can burst a dozen commands at once. The legacy single-file `antfarm_cmd.json` is still read for hand-written one-shots.
@@ -206,6 +215,14 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | `build <subcommand>` | Run `antfarm_blueprint <subcommand>` (next/auto on/status...). |
 | `nick <unit_id> <name>` | Set a unit's nickname (backs the Twitch `!name` claim). |
 | `ui <sub>` | Drive the modal watchdog (`status`/`screen`/`dismiss`/`unpause`/`on`/`off`). |
+| `nobles [status|appoint|rooms]` | Run `antfarm_nobles`. |
+| `orders [scan|reap|stalls]` | Run `antfarm_orders`. |
+| `trade [status|depot|goods]` | Run `antfarm_trade`. |
+| `defence [status|traps|dogs]` | Run `antfarm_defence`. |
+| `quarters [assign|orders]` | Run `antfarm_quarters`. |
+| `locations [status|hall|deities]` | Run `antfarm_locations`. |
+| `metals [<metal>]` | Run `antfarm_metals`. |
+| `autoslab` / `slabs` | Run `antfarm_autoslab`. |
 | `command <dfhack_cmd>` | Run any DFHack console command. |
 | `stop` | Shut the bridge down and release the camera. |
 
@@ -619,3 +636,124 @@ the build to be progressing:
 -- count DRINK / FOOD / PLANT / SEEDS in df.global.world.items.all,
 -- and read u.counters2.thirst_timer / hunger_timer per citizen
 ```
+
+### 6.10. The Seed-Bag-Barrel Hauling Deadlock
+In DF 0.47, seeds are placed into cloth/leather bags, and those bags are placed into wooden barrels or large pots inside food/seed stockpiles.
+* **The Lockout:** When a farmer accepts a task to plant a single plump helmet spawn on a farm plot, the engine assigns them to fetch the *entire barrel* containing the bag of seeds. The dwarf hauls the entire barrel out of the stockpile and carries it all the way to the farm plot.
+* **The Cancellation Cascade:** While that barrel is in transit or on the farm plot, every other farmer attempting to plant seeds stored in that same barrel immediately cancels their job with `Job cancelled: Item inaccessible`. A single farmer planting can paralyze an entire 10-plot agricultural industry.
+* **The Fix:** On every stockpile accepting seeds, **set `max_barrels = 0`**. This forces dwarves to store seed bags directly on the floor tiles. Multiple farmers can access different bags simultaneously without locking the container.
+
+### 6.11. The Outpost Liaison Meeting Freeze & Noble Office Requirement
+The dwarven Outpost Liaison arrives annually with the autumn caravan to negotiate export agreements and trade quotas:
+* **The Stalking Loop:** The Liaison seeks out the Expedition Leader or Mayor to conduct a formal meeting (`viewscreen_topicmeetingst`). If the leader is on a continuous military patrol, mining deep rock, sleeping, or lacks a designated office (`ROOM_OFFICE`), the Liaison follows the leader around the map indefinitely.
+* **The Consequence:** If the Liaison starves, falls into water, or is caught by wild beasts, or if the caravan departs before the meeting concludes, the mountainhome registers the meeting as failed. Over repeated years, this degrades diplomatic relations toward war.
+* **The Fix:** Ensure the Expedition Leader/Mayor is exempt from heavy hauling and full-time military training during Autumn, designate a dedicated chair/office for them, and let `antfarm_ui.lua`'s topicmeeting handler navigate the modal agreement screens to completion.
+
+### 6.12. The Closed Soapmaking Supply Chain (Zero Caravan Soap)
+Soap is the single most critical medical supply for preventing septic wound infections after combat.
+* **The Trap:** Soap **cannot be purchased from caravans**; foreign merchants never bring bars of soap. It must be manufactured in-house.
+* **The 4-Step Chain:**
+  1. `Wood Furnace`: Burn wood logs into `Ash`.
+  2. `Ashery`: Leach ash with water (requires buckets) into `Lye`.
+  3. `Kitchen`: Render animal fat from butchered livestock into `Tallow`.
+  4. `Soap Maker's Workshop`: Combine Lye + Tallow into `Soap`.
+* **The Cooking Vulnerability:** By default, DF cooks will eagerly take raw tallow and roast it into lavish meals, consuming 100% of the fort's fat reserves and starving the soapmaker. `on-new-fortress ban-cooking tallow` in `onMapLoad.init` is strictly mandatory.
+
+### 6.13. Werebeast Moonlight Schedule & Raising Drawbridge Quarantine
+Werebeast bites in DF 0.47 transmit a permanent curse through combat contact that pierces the skin:
+* **Transformation Cycle:** Cursed units transform on the **full moon** (the 10th or 11th of every in-game month). When transformed, they heal all physical damage, become hostile to all living creatures, and act as **Level-2 Building Destroyers** (they smash ordinary wooden/stone doors in seconds).
+* **The Hospital Massacre:** If an injured soldier bitten during a werebeast attack is placed in an open, multi-bed hospital ward, they will transform on the next full moon and slaughter the doctor, nurses, and bedridden patients, spreading the curse to everyone who survives a bite.
+* **The Fix:** Hospitals must feature single-bed recovery rooms sealed with **raising drawbridges** (which cannot be destroyed when raised) rather than doors. Run `cursecheck` or scan combat logs for bite wounds piercing skin to isolate infected individuals before the 10th of the month.
+
+### 6.14. Vampire Behavioral Profiling & False Justice Accusations
+Vampires migrate into fortresses posing as ordinary citizens, bards, or scholars:
+* **Physiological Invariants:** Vampires never eat food, never drink booze or water, and never sleep in beds. They have artificially high social skills, bloated historical figure kill lists, and dozens of former organizational memberships.
+* **The Framing Trap:** When a vampire drinks blood from a sleeping dwarf in a bedroom, the victim dies of blood loss. Because no witness was present, the justice system frequently frames and convicts innocent haulers or bedroom neighbors, who are then beaten to death by the Hammerer.
+* **Detection:** Identify suspect citizens via lack of eating/drinking thoughts or by running `cursecheck` in DFHack. Isolate vampires into sealed lever-pulling or bookkeeping offices where they can work forever without food or rest.
+
+### 6.15. 3-Tile Paved Wagon Roads to Prevent Sapling Regrowth Blockades
+Trade caravans require a 3-tile wide path free of trees, boulders, walls, and traps from the map edge to the trade depot:
+* **The Sapling Threat:** In biomes with vegetation, soil and dirt tiles naturally sprout saplings that mature into full trees within 1–2 years. If trees sprout on the approach corridor, wagons report `Trade wagons were unable to find a path to your depot` and bypass the fort entirely.
+* **The Fix:** Construct a 3-tile wide paved stone road (`b-o-r`) or stone block floor (`b-C-f`) spanning from the fortress entrance to the map boundary. Paved tiles permanently inhibit vegetation, preventing tree blockades.
+
+### 6.16. Strange Mood Material Exhaustion & Workshop Lockdown (`showmood`)
+When a dwarf enters a strange mood (Fey, Secretive, Possessed, Macabre, Fell), they claim a workshop and demand materials:
+* **The Impossible Demands:** Dwarves may demand green glass (on embarks without sand), shells (on embarks without turtles or cave lobsters), or silk. If the item cannot be acquired within a few months, the dwarf goes melancholy, insane, or berserk.
+* **Diagnostic & Containment:** Run `showmood` (compiled DFHack plugin `game/hack/plugins/showmood.plug.so`) to view the exact requested items. If an item cannot be obtained, construct a temporary wall or lock the workshop door before the deadline to isolate a potentially berserk artisan from the rest of the fort.
+
+### 6.17. Freezing Surface Water, Deep Cisterns & Hydrostatic Depressurization
+* **Winter Freezing Entombment:** In freezing or cold biomes, surface rivers and pools flash-freeze into solid ice on the 1st of Granite or late Autumn. Dwarves standing near or in the water when it freezes are instantly encased and killed. Wells drawing from surface water freeze solid.
+* **Deep Cisterns:** Wells must draw from cisterns excavated in deep rock levels (at least 3 z-levels below ground), where water remains permanently liquid regardless of surface temperature.
+* **Diagonal Depressurization:** High-elevation water fed through pipes or aqueducts retains hydrostatic pressure and will overflow at the wellhead, flooding the fortress. Feeding fluid through a single diagonal tile resets hydrostatic pressure to 1, guaranteeing the water level never exceeds the wellhead floor.
+
+### 6.18. Cavern Web Suicide Runs by Civilian Weavers
+* When cavern layers are breached, giant cave spiders or phantom webs generate across subterranean rocks.
+* Any civilian dwarf with the "Weaving" or "Collect Web" labor enabled will path thousands of tiles through unmapped, hostile cavern corridors to collect a single silk strand, frequently walking straight into forgotten beasts or troglodyte ambushes.
+* **The Fix:** Turn off web collection on civilians or restrict gathering via burrows until cavern perimeter walls and airlocks are fully secured.
+
+### 6.19. Decontamination Foot Baths & High-Traffic Mist Cleaning
+* **Syndrome Tracking:** Forgotten beasts and underground creatures often possess toxic syndromes carried in venom, blood, or dust. Combatants track these contaminants on their shoes across the fortress. Barefoot citizens (especially children or dwarves whose shoes rotted away) walking across contaminated tiles absorb the toxin through their skin, triggering necrosis, nausea, or blindness.
+* **The Fix:** Install a shallow water channel (depth 1/7 to 2/7) or mist generator across the primary fortress entrance and hospital thresholds. Walking through shallow water washes contaminants off citizens' feet before they reach living quarters.
+
+### 6.20. Fortification Overhangs & Outer Ditch Geometry (Climbing Invaders)
+* **Climbing Invaders:** In DF 0.47, invaders with grasping hands (goblins, trolls, night creatures) can climb smooth vertical walls and clamber directly over unroofed fortifications.
+* **No Built-in Roof:** Constructed fortifications do *not* provide a ceiling or floor tile on the z-level above them. If left open, hostile climbers scale the outer wall and bypass defenses immediately.
+* **Line-of-Sight Negation:** If an enemy archer stands directly adjacent to the outside of a fortification (distance 1), they gain near 100% line of sight into the bunker, negating the defensive cover advantage of your marksdwarves.
+* **The Fix:**
+  1. Build a 1-tile **overhang** or constructed floor ceiling (`b-C-f`) directly above outer fortifications. Climbers cannot navigate past the horizontal underside of an overhang.
+  2. Dig a 1-tile wide dry ditch/moat directly in front of outer fortifications to keep enemy archers at distance ≥2.
+
+### 6.21. Wild Animal Training Decay & In-Fortress Reversion
+* **Training Degradation:** Wild-caught beasts (e.g. giant war badgers, cave dragons, bears) possess a training level (`Semi-wild`, `Trained`) that steadily decays over time.
+* **The Reversion Slaughter:** If an assigned trainer does not periodically re-train the animal in a designated pasture/training zone, the creature drops to `Wild`. If it is loose in a communal hallway or dining room, it immediately turns hostile and begins slaughtering nearby citizens.
+* **The Fix:**
+  1. Keep captured wild animals safely caged until an active training pasture with a dedicated trainer is established.
+  2. Pair captured animals to breed: offspring trained during their juvenile phase become **permanently and fully domesticated** (`[DOMESTICATED]`), permanently eliminating the reversion timer for all future generations.
+
+### 6.22. Tree Canopy Fruit Gathering & Stepladder Abandonment
+* **Stepladder Theft:** When herbalists climb into fruit trees using stepladders to gather fruit, other haulers often claim the stepladder for other jobs, carrying it away.
+* **Canopy Stranding:** Dwarves do not utilize climbing downwards in standard pathfinding logic. Once the ladder is stolen, the gatherer becomes permanently trapped in the tree canopy, eventually dehydrating or starving to death.
+* **The Fix:** In autonomous fortress mode, configure gathering zones to gather only fallen ground fruit and shrubs (`Gather fallen fruit: YES`, `Gather from trees: NO`), or build permanent constructed stone staircases directly up into dedicated orchard trees.
+
+### 6.23. Windmills vs. Waterwheels in Freezing Climates
+* **Winter Freezing:** Surface rivers and brook tiles freeze solid in cold/freezing biomes during winter. Any waterwheel built on surface water halts immediately, killing power to underground millstones, screw pumps, and mechanical quarantine systems.
+* **The Fix:** Use surface **windmills** for mechanical power. Windmills generate constant, freeze-immune power regardless of weather, season, or fluid status. For water power, draw exclusively from subterranean, non-freezing underground aquifers or deep caverns (z-depth ≥ 3).
+
+### 6.24. Marksdwarf Quiver Requirements & Hunter Ammo Preemption
+* **Quiver Absence:** A marksdwarf cannot equip bolts without a leather/cloth quiver (`ITEM_QUIVER`). Without a quiver, soldiers assigned crossbows will march into melee and attempt to beat heavily armored goblins with their wooden crossbows like clubs.
+* **Hunter Ammo Reservation:** Civilian hunters reserve ammunition stacks from the fortress stock. If hunters are active, they can lock all available bolts, leaving military marksdwarves with 0 accessible ammunition.
+* **The Fix:**
+  1. Enforce manager workorders for leather/cloth quivers before drafting marksdwarves.
+  2. Disable the "Hunting" labor on all citizens in autonomous forts, reserving 100% of ammunition for military squads.
+  3. Store bolts in containerless stockpiles (`max_bins = 0`) directly adjacent to archery ranges and defense stations.
+
+### 6.25. Military Backpack Ration Rotting & Miasma Traps
+* **Ration Stashing:** In DF 0.47, soldiers assigned backpacks carry food rations with them.
+* **Unequipping Spoilage:** When off-duty or interrupted while eating, soldiers frequently drop partially consumed food rations on the floors of barracks or bedrooms.
+* **Miasma & Trauma:** Because the food is not inside a stockpile, it rots into miasma clouds, horrifying sleeping dwarves and giving soldiers persistent negative stress thoughts (`disgusted by rotting food`).
+* **The Fix:** In squad uniform settings (`m-e`), explicitly set **backpacks to 0**. Soldiers will eat hot meals in the dining hall like ordinary citizens, completely eliminating rotting rations.
+
+### 6.26. Chief Medical Dwarf Diagnosis Gate & Hospital Water Hydration
+* **The Diagnosis Gatekeeper:** When injured citizens are carried to hospital beds, treatments (surgery, bone setting, suturing) cannot be scheduled until a dwarf with the **Diagnosis** labor evaluates them. If the Chief Medical Dwarf position is vacant or no active doctor has the Diagnosis labor enabled, patients remain in "Rest" status indefinitely until they die of neglect.
+* **Patients Drink Water Only:** Bedridden patients in hospitals strictly refuse alcohol; nurses can only hydrate them with **water carried in buckets**. If the fortress lacks clean water or empty buckets, patients die of dehydration in their beds.
+* **Stagnant Water Infection:** Cleaning wounds with stagnant water (from murky surface pools) causes near 100% septicemia infection rates.
+* **The Fix:**
+  1. Always appoint a Chief Medical Dwarf via `antfarm_nobles.lua` and ensure medical staff have Diagnosis enabled.
+  2. Maintain a deep, non-stagnant underground cistern (depth ≥ 2) feeding a hospital well.
+  3. Run `fix/dry-buckets` monthly to prevent bucket liquid flag corruption.
+
+### 6.27. Elven Trade Embargo & Wooden Container Offense
+* **The Wooden Container Trap:** Elven merchants are religiously opposed to tree exploitation. While they tolerate items hauled to the depot inside wooden bins or barrels, offering the **wooden container itself** in the trade transaction causes immediate insult: *"It is sickening that you bring such filth to our attention."*
+* **The Consequence:** The merchant immediately halts trading, packs up the caravan, and departs. Repeated offenses cause the Elven civilization to declare war.
+* **The Fix:** Automated trade scripts (`antfarm_trade.lua`) must uncheck the outer wooden bin/barrel container, offering exclusively the individual items inside (e.g. stone crafts, cut gems, metal bars). Furthermore, never offer items crafted with wood, clear glass (requires pearlash), or soap.
+
+### 6.28. Cave-in Supersonic Dust Concussion Traps
+* **Structural Collapse:** Excavating natural rock supports or channeling floors underneath heavy structures triggers a cave-in.
+* **Supersonic Dust Wave:** Cave-ins generate a violent shockwave of cave-in dust. Any creature caught within the blast radius is hurled backward into walls, suffering shattered spines, crushed skulls, or instant death, or is blown through fortifications into open chasms.
+* **The Fix:** Always leave natural stone support pillars intact when clearing large underground chambers, or build constructed support pillars linked to levers (`b-S`) before intentionally triggering collapses.
+
+### 6.29. Magma Building Material Heat Threshold (12,000 °U)
+* **Thermal Destruction:** Workshops or machinery that come into contact with magma (Magma Smelters, Magma Forges, Magma Kilns, and magma floodgate mechanisms) must be constructed exclusively from materials with a melting point exceeding the temperature of magma (**≥ 12,000 °U**).
+* **The Disaster:** Constructing a magma workshop from non-magma-safe stone (e.g. mudstone, schist, chalk) causes the building to melt and deconstruct immediately upon magma contact, releasing uncontained magma onto the workshop floor and incinerating the operator.
+* **The Fix:** Filter construction materials via `antfarm_metals.lua` to only permit magma-safe rock (e.g. gabbro, basalt, granite, quartzite, bauxite) and iron/steel mechanisms for all magma installations.
+
