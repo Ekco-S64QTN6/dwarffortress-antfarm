@@ -1,1 +1,11 @@
-:lua df.global.game.external_flag = 1
+# Dwarf Therapist hand-off flag -- DISABLED, it does not work on this build.
+#
+# `df.global.game` does not exist in DF 0.47 (it is a v50 structure), so this
+# line raised `Cannot read field global.game: not found` on every single startup
+# and set nothing. It came in with the vendored Dwarf Therapist config.
+#
+# Dwarf Therapist on 0.47 attaches to the process directly and needs no flag set
+# from inside DFHack, so there is nothing to replace it with. Left here, commented,
+# so the intent is on record rather than silently dropped.
+#
+#:lua df.global.game.external_flag = 1

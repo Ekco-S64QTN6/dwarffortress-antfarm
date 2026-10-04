@@ -47,6 +47,21 @@ with one command.
    fort autosaved first and was recoverable.
 4. **`frequency = Daily`** on the brew orders is worth checking — a daily order
    issues a limited batch per day, which on a young fort may simply be too slow.
+5. **DFHack's load screen cannot be driven.** `dfhack/lua/load_screen` replaces the
+   vanilla `viewscreen_loadgamest`, and `antfarm_autostart` has no handler for it —
+   it sat there logging "DFHack is loading the save" indefinitely. The launcher now
+   avoids the screen entirely by passing `+load-save <region>` when a fort exists,
+   and autostart gives up after 60s with instructions rather than waiting in
+   silence. Driving the screen properly is still unimplemented, so launching
+   `./dfhack` bare on a fort save still needs one human keypress.
+6. **A vendored init file errored on every startup.** `dfhack-dwarftherapist-labors.init`
+   contained `:lua df.global.game.external_flag = 1`; `df.global.game` is a v50
+   structure and does not exist here. Now commented out with the reasoning, and the
+   v50 API test scans `.init` files as well as `.lua` — it had only looked at
+   scripts, which is why this one survived the previous sweep.
+7. **`Parse error: param job df.job`** appears during quickfort's startup config
+   read. It is upstream quickfort, not ours, and appears harmless — but it has not
+   been traced.
 
 ---
 
@@ -170,6 +185,13 @@ flipped as soon as locations exist.
 The pasture zone is created on grass with a farmer's workshop beside it, but it
 is not **fenced** — no wall ring, no door. Building the enclosure is a
 construction job the module does not queue.
+
+### 3.6a. A known-good opening order
+
+`docs/FORT-CHECKLIST.md` §3 now names the reference: **Captain Duck's 2012 tutorial
+series**, the opening most players learned. Matching the subsystems against that
+sequence — and asserting each step either happens or is deliberately skipped — is
+the difference between a fort that does not die and a fort that is played well.
 
 ### 3.6b. Priority order
 

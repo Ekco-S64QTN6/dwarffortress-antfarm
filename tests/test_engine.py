@@ -669,6 +669,11 @@ class VersionCompatibility(unittest.TestCase):
         paths += glob.glob("game/hack/scripts/fix/*.lua")
         for extra in ("allneeds", "justice", "suspend"):
             paths += glob.glob("game/hack/scripts/%s.lua" % extra)
+        # Init files run on every startup and are just as able to call a symbol
+        # that does not exist. A vendored one-liner setting df.global.game
+        # (a v50 structure) raised on every single launch and was missed because
+        # this scan only looked at .lua files.
+        paths += glob.glob("game/dfhack-config/init/*.init")
         return sorted(paths)
 
     def test_no_v50_only_api_in_scripts_we_own_or_schedule(self):

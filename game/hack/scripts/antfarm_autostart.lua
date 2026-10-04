@@ -235,8 +235,25 @@ local function step()
             -- and the launcher now avoids it entirely by passing +load-save, so
             -- there is nothing to do here but wait rather than report confusion.
             if focus:find('load_screen', 1, true) then
-                note('DFHack is loading the save')
+                -- DFHack replaces the vanilla load screen with its own Lua one
+                -- (`dfhack/lua/load_screen`), which is not a viewscreen this
+                -- stepper can recognise or drive. The launcher avoids it by
+                -- passing `+load-save <region>`, so landing here means DF was
+                -- started bare. Say so instead of waiting out MAX_SECONDS in
+                -- silence, which is what it used to do.
+                antfarm_autostart.load_screen_since =
+                    antfarm_autostart.load_screen_since or os.time()
+                local waited = os.time() - antfarm_autostart.load_screen_since
+                if waited > 60 then
+                    antfarm_autostart.failed =
+                        'stuck on DFHack\'s load screen -- it cannot be driven from '
+                        .. 'here. Pick the save in the DF window, or relaunch with '
+                        .. '`./start_antfarm.sh` (it passes +load-save).'
+                else
+                    note(('DFHack is loading the save (%ds)'):format(waited))
+                end
             else
+                antfarm_autostart.load_screen_since = nil
                 note('waiting on ' .. focus)
             end
         end
@@ -250,6 +267,7 @@ function go()
     antfarm_autostart.running = true
     antfarm_autostart.started_at = os.time()
     antfarm_autostart.embark_tries = 0
+    antfarm_autostart.load_screen_since = nil
     antfarm_autostart.done = false
     antfarm_autostart.failed = nil
     antfarm_autostart.last = nil

@@ -99,10 +99,23 @@ Knowing *what* a fort needs is not the same as knowing *when*. The checks above
 are a set; a fort is built in a sequence, and the sequence matters more than any
 single item.
 
-The community worked this out years ago, and the step-by-step tutorial series
-from the 0.47 era encode it. **Dreamfort itself is one of those encodings** — its
-twenty-two steps are a curated build order, which is exactly why this project
-drives it rather than hand-rolling a digger (`docs/fortress-build.md`).
+The community worked this out years ago. The canonical reference is
+**Captain Duck's tutorial series** (2012) — the videos that taught a generation of
+players a working opening, in order, with reasons. That series is the thing to
+match the subsystems against: not a list of features but a *sequence*, where each
+step exists because the one before it made it possible.
+
+**Dreamfort is the other encoding** of the same idea — its twenty-two steps are a
+curated build order, which is exactly why this project drives it rather than
+hand-rolling a digger (`docs/fortress-build.md`).
+
+The two differ in an important way. Captain Duck's order is what a *player* does,
+including all the improvising a player does without thinking about it: a couple of
+farm plots and a still in the first season, a dormitory thrown up early, booze
+checked constantly. Dreamfort's order is what a *finished fort* looks like being
+built cleanly, and it defers those improvisations in favour of doing them properly
+later. Automation that follows Dreamfort alone inherits the deferral without
+inheriting the player who was covering for it.
 
 What has gone wrong so far is not Dreamfort's order but **what the automation does
 around it**:
@@ -123,6 +136,12 @@ area rather than leave the fort in a field. The blueprint still provides the
 immediately.
 
 ### Still open
+
+**Nothing matches the subsystems against a known-good opening order.** The
+survival rule above (never gate the essentials) is a backstop, not a plan. Working
+through Captain Duck's opening season and asserting that each step either happens
+or is deliberately skipped would turn "the fort did not die" into "the fort was
+played well".
 
 There is no **arbiter**. Mining, hauling, construction, military and gathering
 all draw from the same dwarves, and nothing ranks them. Today the ordering is
