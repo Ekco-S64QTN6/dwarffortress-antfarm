@@ -267,6 +267,25 @@ Future agents working on this codebase MUST review these documented pitfalls bef
 
 11. **`unit.flags1.dead` does not exist in this build.** Reading it raises `Cannot read field unit_flags1.dead: not found`, and because it sat inside the state serialiser the whole bridge produced no output while logging only a generic failure. Use `dfhack.units.isActive(unit)` (or `isDead`) -- the API helpers are stable across versions, the bitfield names are not. Prefer `dfhack.units.*` over raw flag access everywhere.
 
+12. **Never write `manager_order.status` bits.** Setting `status.validated = true`
+    and `status.active = true` across the order list to force work orders to issue
+    **segfaulted DF silently** -- the window closed with no error, no core, and
+    nothing in `stderr.log` but the preceding `Invoking:` lines. DF maintains
+    invariants around a validated order (a linked workshop, an issued job
+    structure); flipping the bits by hand leaves it dereferencing something that
+    was never built.
+
+    Read those bits freely; never write them. If orders are not issuing, the cause
+    is in the fort (no manager, missing ingredients, no workshop with the labour
+    enabled, or simply that the daily validation tick has not come round yet), and
+    all of those are fixable from the game side.
+
+    The hypothesis that prompted this -- "the manager has no office, so nothing
+    validates" -- was also most likely **wrong**: an earlier fort in the same setup
+    completed `Brew drink from plant` and `Make rock Pot` from manager orders with
+    no office defined. Diagnose before writing to DF's internals, and prefer
+    doing nothing to doing something irreversible.
+
 ### 6.2. Critical Game Stability Fixes & Settings
 
 > **Verify before you trust this list.** As of 2026-09-12 several of these were

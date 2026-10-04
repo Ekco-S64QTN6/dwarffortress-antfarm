@@ -42,10 +42,12 @@ local function get_squad_army(squad)
     end
 end
 
+-- NOTE: upstream targets DFHack v50, where `ui` was renamed `plotinfo`. On
+-- this 0.47 build that field does not exist and every scheduled run raised.
 -- called by gui/notify notification
 function scan_fort_armies()
     local stuck_armies, outbound_army, returning_army = {}, nil, nil
-    local govt = df.historical_entity.find(df.global.plotinfo.group_id)
+    local govt = df.historical_entity.find(df.global.ui.group_id)
     if not govt then return stuck_armies, outbound_army, returning_army end
 
     for _,squad_id in ipairs(govt.squads) do

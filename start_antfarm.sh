@@ -1,8 +1,13 @@
 #!/bin/bash
 # start_antfarm.sh - launcher for Dwarf Fortress + the Antfarm companion
 #
-# Option 5 brings the whole stream up at once: the game in one window and the
-# dashboard (with the Twitch bridge, if configured) in another.
+# Run it with no arguments and it does the whole thing: generate a world if there
+# is none, embark if there is a world but no fort, continue the fort if there is
+# one, and bring the dashboard up beside it. There is nothing to choose.
+#
+#   ./start_antfarm.sh            everything, no questions
+#   ./start_antfarm.sh --menu     the old menu, for the individual pieces
+#   ./start_antfarm.sh --status    what is running right now
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$BASE_DIR" || exit 1
@@ -59,51 +64,145 @@ df_running() { pgrep -x Dwarf_Fortress >/dev/null 2>&1; }
 # ---------------------------------------------------------------- #
 # actions                                                          #
 # ---------------------------------------------------------------- #
-launch_everything() {
+# What is on disk, and therefore what has to happen.
+#
+# DF splits saves across two menus and the marker file is the only reliable way
+# to tell them apart from outside the game (antfarm_worlds.lua documents this):
+#   world.sav present -> the world has a fortress    -> Continue Playing
+#   world.dat only    -> a generated world, no fort  -> Start Playing (embark)
+world_state() {
+    local d
+    for d in "$BASE_DIR"/game/data/save/*/; do
+        [ -d "$d" ] || continue
+        [ "$(basename "$d")" = "current" ] && continue
+        if [ -f "$d/world.sav" ]; then echo "fort"; return; fi
+    done
+    for d in "$BASE_DIR"/game/data/save/*/; do
+        [ -d "$d" ] || continue
+        [ "$(basename "$d")" = "current" ] && continue
+        if [ -f "$d/world.dat" ]; then echo "world"; return; fi
+    done
+    echo "empty"
+}
+
+# The save folder holding a fortress, for DFHack's +load-save.
+fort_region() {
+    local d
+    for d in "$BASE_DIR"/game/data/save/*/; do
+        [ -d "$d" ] || continue
+        [ "$(basename "$d")" = "current" ] && continue
+        if [ -f "$d/world.sav" ]; then basename "$d"; return; fi
+    done
+}
+
+# Lowest unused regionN, so generating never overwrites an existing world.
+next_region() {
+    local n=1
+    while [ -d "$BASE_DIR/game/data/save/region$n" ]; do n=$((n + 1)); done
+    echo "$n"
+}
+
+# Generate a world with our own preset. TOLKIEN_EPIC_MEDIUM lives in
+# game/data/init/world_gen.txt; -gen needs no keyboard and exits when finished.
+gen_world() {
+    local region preset
+    region=$(next_region)
+    preset="${ANTFARM_WORLDGEN_PRESET:-TOLKIEN_EPIC_MEDIUM}"
+    echo "  -> no world on disk; generating region$region with preset $preset"
+    echo "     (this takes a few minutes and prints a lot; it is not stuck)"
+    ( cd "$BASE_DIR/game" && ./df -gen "$region" RANDOM "$preset" ) \
+        >"$BASE_DIR/game/worldgen.log" 2>&1
+    if [ "$(world_state)" = "empty" ]; then
+        echo "     worldgen FAILED - see game/worldgen.log"
+        return 1
+    fi
+    echo "     world generated."
+    return 0
+}
+
+# Wait until DFHack answers, then hand the title screen to antfarm_autostart.
+autostart_go() {
+    echo -n "  -> waiting for DFHack"
+    local i
+    for i in $(seq 1 60); do
+        if ( cd "$BASE_DIR/game" && ./dfhack-run lua 'print(1)' ) >/dev/null 2>&1; then
+            echo " ready."
+            break
+        fi
+        echo -n "."; sleep 2
+    done
+    ( cd "$BASE_DIR/game" && ./dfhack-run antfarm_autostart go ) 2>&1 \
+        | sed -r 's/\x1b\[[0-9;]*[a-zA-Z]//g'
+}
+
+# Everything, in one go.
+launch_all() {
     local term; term=$(detect_terminal)
     if [ -z "$term" ]; then
         echo "No supported terminal emulator found."
         echo "Install one of: kitty, wezterm, alacritty, foot, konsole, gnome-terminal, xterm"
         echo "or set ANTFARM_TERMINAL=<your terminal>."
-        echo
-        echo "Falling back: start the game here, then run the dashboard yourself with"
-        echo "  $PY -m antfarm.tui"
-        sleep 2
-        cd game && exec ./dfhack
+        return 1
     fi
-    echo "Using terminal: $term"
+
+    local state; state=$(world_state)
+    echo "Antfarm: starting up (world: $state, terminal: $term)"
+
+    if [ "$state" = "empty" ]; then
+        gen_world || return 1
+        state=$(world_state)
+    fi
 
     if df_running; then
-        echo "Dwarf Fortress is already running - not starting a second copy."
+        echo "  -> Dwarf Fortress is already running; not starting a second copy"
     else
-        echo "  -> window 1: Dwarf Fortress + DFHack"
         rm -f "$STATE"
-        # autolabor logs every dwarf every cycle (~45k lines/hour), so start
-        # each session with empty logs rather than letting them grow forever.
+        # autolabor logs every dwarf every cycle (~45k lines/hour), so start each
+        # session with empty logs rather than letting them grow forever.
         : > "$BASE_DIR/game/stderr.log" 2>/dev/null
         : > "$BASE_DIR/game/stdout.log" 2>/dev/null
-        spawn_term "Dwarf Fortress" "cd $(shq "$BASE_DIR/game") && ./dfhack; echo; echo '[DF exited - press enter to close]'; read"
+        # Continuing a fort loads it with DFHack's own +load-save, which needs no
+        # keyboard and no screen driving at all (AGENTS.md 6.5). The load screen
+        # here is DFHack's Lua replacement (`dfhack/lua/load_screen`), not the
+        # vanilla viewscreen_loadgamest, so driving it is both fiddly and
+        # unnecessary -- autostart sat on it waiting for a screen that never came.
+        local dfargs=""
+        if [ "$state" = "fort" ]; then
+            local region; region=$(fort_region)
+            [ -n "$region" ] && dfargs="+load-save $region"
+        fi
+        echo "  -> window 1: Dwarf Fortress + DFHack${dfargs:+ ($dfargs)}"
+        spawn_term "Dwarf Fortress" \
+            "cd $(shq "$BASE_DIR/game") && ./dfhack $dfargs; echo; echo '[DF exited - press enter to close]'; read"
     fi
 
-    # The dashboard tolerates the game not being up yet, but waiting for the
-    # bridge means it opens straight onto live data instead of the waiting HUD.
-    echo -n "  -> waiting for the fortress bridge"
-    for _ in $(seq 1 40); do
-        [ -f "$STATE" ] && break
-        echo -n "."; sleep 1
+    # The dashboard goes up first so the watchdog is armed (screen dismissal is
+    # only enabled while a client is attached) before the fort starts producing
+    # popups of its own.
+    echo "  -> window 2: Antfarm dashboard"
+    spawn_term "Antfarm Dashboard" \
+        "cd $(shq "$BASE_DIR") && $(shq "$PY") -m antfarm.tui; echo; echo '[dashboard exited - press enter to close]'; read"
+
+    case "$state" in
+        fort)  echo "  -> continuing the existing fort" ;;
+        world) echo "  -> no fort yet: picking an embark site and starting one" ;;
+    esac
+    autostart_go
+
+    echo -n "  -> waiting for the fort to come up"
+    local i
+    for i in $(seq 1 90); do
+        [ -f "$STATE" ] && grep -q '"map_loaded": *true' "$STATE" 2>/dev/null && break
+        echo -n "."; sleep 2
     done
     echo
-    if [ -f "$STATE" ]; then
-        echo "     bridge is up."
+    if [ -f "$STATE" ] && grep -q '"map_loaded": *true' "$STATE" 2>/dev/null; then
+        echo "     the fort is live and the bridge is up."
     else
-        echo "     no bridge yet (load a save in DF); the dashboard will pick it up automatically."
+        echo "     not up yet. Check progress with:"
+        echo "       cd game && ./dfhack-run antfarm_autostart"
     fi
 
-    echo "  -> window 2: Antfarm dashboard"
-    spawn_term "Antfarm Dashboard" "cd $(shq "$BASE_DIR") && $(shq "$PY") -m antfarm.tui; echo; echo '[dashboard exited - press enter to close]'; read"
-
-    echo
-    echo "Everything is up. Load or continue a fort in the Dwarf Fortress window."
     if [ -f "$BASE_DIR/config/twitch.json" ] || [ -n "$TWITCH_CHANNEL" ]; then
         echo "Twitch: configured - the bridge runs inside the dashboard."
     else
@@ -193,24 +292,48 @@ show_utilities() {
     setsid "${paths[$((pick - 1))]}" >/dev/null 2>&1 &
 }
 
-echo "=========================================================="
-echo "          Dwarf Fortress + Antfarm Companion              "
-echo "=========================================================="
-echo "  1) Launch EVERYTHING (game + dashboard, own windows)"
-echo "  2) Dwarf Fortress + DFHack only (this window)"
-echo "  3) Antfarm dashboard only (this window)"
-echo "  4) Twitch chat bridge only, no dashboard (this window)"
-echo "  5) Status"
-echo "  6) Utilities (Dwarf Therapist, Legends Browser, SoundSense...)"
-echo "=========================================================="
-read -r -p "Select option [1-6] (default: 1): " choice
-choice=${choice:-1}
+show_menu() {
+    echo "=========================================================="
+    echo "          Dwarf Fortress + Antfarm Companion              "
+    echo "=========================================================="
+    echo "  1) Launch EVERYTHING (world/embark/continue + dashboard)"
+    echo "  2) Dwarf Fortress + DFHack only (this window)"
+    echo "  3) Antfarm dashboard only (this window)"
+    echo "  4) Twitch chat bridge only, no dashboard (this window)"
+    echo "  5) Status"
+    echo "  6) Utilities (Dwarf Therapist, Legends Browser, SoundSense...)"
+    echo "=========================================================="
+    read -r -p "Select option [1-6] (default: 1): " choice
+    choice=${choice:-1}
 
-case "$choice" in
-    2) cd game || exit 1; exec ./dfhack ;;
-    3) exec "$PY" -m antfarm.tui ;;
-    4) exec "$PY" -m antfarm.twitch ;;
-    5) show_status ;;
-    6) show_utilities ;;
-    *) launch_everything ;;
+    case "$choice" in
+        2) cd game || exit 1; exec ./dfhack ;;
+        3) exec "$PY" -m antfarm.tui ;;
+        4) exec "$PY" -m antfarm.twitch ;;
+        5) show_status ;;
+        6) show_utilities ;;
+        *) launch_all ;;
+    esac
+}
+
+# No arguments is the whole point: one command, no questions, fort running.
+case "${1:-}" in
+    ''|--go|-g)        launch_all ;;
+    --menu|-m)         show_menu ;;
+    --status|-s)       show_status ;;
+    --utilities|-u)    show_utilities ;;
+    --help|-h)
+        echo "Usage: $(basename "$0") [--go|--menu|--status|--utilities]"
+        echo
+        echo "  (no arguments)  generate a world if needed, embark or continue,"
+        echo "                  start the dashboard, and begin playing"
+        echo "  --menu          choose an individual piece"
+        echo "  --status        what is running right now"
+        echo "  --utilities     Dwarf Therapist, Legends Browser, SoundSense"
+        echo
+        echo "Environment:"
+        echo "  ANTFARM_TERMINAL          force a terminal emulator"
+        echo "  ANTFARM_WORLDGEN_PRESET   worldgen preset (default TOLKIEN_EPIC_MEDIUM)"
+        ;;
+    *) echo "Unknown option: $1 (try --help)"; exit 1 ;;
 esac

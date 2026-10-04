@@ -158,8 +158,18 @@ local ORDER_LIBS = {
 -- plan persistence                                                 --
 -- ---------------------------------------------------------------- --
 
+-- Set by survey(); read by whoever stores the plan. survey() already returns
+-- two values and threading a third through every call site buys nothing.
+plan_farming_mode = nil
+
 local function default_plan()
     return {
+        -- Which fort this plan describes; see fort_identity().
+        fort = nil,
+        -- 'soil' | 'soil-shallow' | 'irrigate': how the farming level can be
+        -- farmed. 'irrigate' means there is no dry soil and plots need a muddied
+        -- rock floor (or surface farms) before they can be built at all.
+        farming_mode = nil,
         anchor = nil,       -- {x=, y=}
         levels = nil,       -- {surface=, farming=, industry=, ...}
         step = 1,           -- next index into PLAN
@@ -182,10 +192,70 @@ local function default_plan()
     }
 end
 
+-- Which fort a plan belongs to.
+--
+-- The plan file survives across forts, and nothing used to notice. Embarking a
+-- new fort inherited the previous one's anchor, z-levels and step counter: a
+-- fresh 7-dwarf fort reported "step 15/22, surface z=62" while its dwarves stood
+-- on z=63 of a different map, with auto mode ON and the gate open. It then
+-- applied late-stage surface blueprints at coordinates belonging to a fort that
+-- no longer existed. Silent, and ruinous.
+--
+-- site_id alone is NOT enough. It is assigned at embark and only persisted when
+-- the game is saved, so two forts embarked in one session without a save both
+-- come out as id 460 -- measured: "Lemisber" and "Odrozzas", different embarks on
+-- different tiles, identical ids, and the second happily inherited the first's
+-- plan. The embark rectangle's world origin and the fort's generated name are
+-- what actually differ.
+local function fort_identity()
+    local ok, id = pcall(function()
+        local dir = df.global.world.cur_savegame.save_dir
+        local site = df.global.world.world_data.active_site[0]
+        return ('%s/%d/%d,%d/%s'):format(
+            tostring(dir), site.id, site.global_min_x, site.global_min_y,
+            dfhack.TranslateName(site.name))
+    end)
+    return ok and id or nil
+end
+
+-- A plan describes this fort only if it is stamped with this fort's identity.
+-- An unstamped plan that already has an anchor predates stamping and cannot be
+-- attributed, so it counts as foreign: re-surveying costs seconds, building
+-- another fort's blueprint costs the fort.
+local function plan_is_foreign(plan, fort)
+    if not fort then return false end          -- no map loaded; nothing to judge
+    if not plan.anchor then return false end   -- no progress to be wrong about
+    return plan.fort ~= fort
+end
+
+local function discard_foreign_plan(plan, fort)
+    local why = plan.fort and ('belongs to fort ' .. tostring(plan.fort))
+                          or 'predates fort stamping'
+    dfhack.printerr(('antfarm_blueprint: discarding a plan that %s -- this fort '
+                     .. 'is %s; re-survey before building'):format(why, tostring(fort)))
+end
+
 local function load_plan()
-    if antfarm_plan then return antfarm_plan end
+    local fort = fort_identity()
+    -- Validate the cached plan too, not just a freshly loaded one. reqscript
+    -- re-runs the file but `antfarm_plan` is a true global and survives the
+    -- reload, so an unvalidated cache outlived the fort it described.
+    if antfarm_plan then
+        if plan_is_foreign(antfarm_plan, fort) then
+            discard_foreign_plan(antfarm_plan, fort)
+            antfarm_plan = default_plan()
+            antfarm_plan.fort = fort
+            pcall(json.encode_file, antfarm_plan, PLAN_FILE)
+        end
+        return antfarm_plan
+    end
     local ok, data = pcall(json.decode_file, PLAN_FILE)
     antfarm_plan = (ok and type(data) == 'table') and data or default_plan()
+    if plan_is_foreign(antfarm_plan, fort) then
+        discard_foreign_plan(antfarm_plan, fort)
+        antfarm_plan = default_plan()
+    end
+    antfarm_plan.fort = fort
     antfarm_plan.orders_done = antfarm_plan.orders_done or {}
     -- Fields added after a plan file may have been written; a fort mid-build
     -- must not break because its saved plan predates them.
@@ -198,6 +268,8 @@ end
 
 local function save_plan()
     if not antfarm_plan then return end
+    -- Stamp every write, so a plan can always be matched back to its fort.
+    if not antfarm_plan.fort then antfarm_plan.fort = fort_identity() end
     pcall(json.encode_file, antfarm_plan, PLAN_FILE)
 end
 
@@ -366,7 +438,11 @@ function survey(cx, cy)
         farming_mode = 'irrigate'
     end
     levels.farming = farming_z
-    levels.farming_mode = farming_mode
+    -- NOT stored in `levels`: that table is name -> z-level and is fed straight
+    -- to fort_zlevels(), which would add the mode string to the set of z-levels
+    -- the dig/build gates scan, and to cmd_status, which formats every value
+    -- with %d. Both broke on it. The mode rides on the plan instead.
+    plan_farming_mode = farming_mode
     local mode_note = ({
         ['soil'] = ' (soil)',
         ['soil-shallow'] = ' (soil, shallower than preferred -- no deeper dry soil)',
@@ -453,10 +529,14 @@ local function fort_zlevels(levels)
     local zs = {}
     if levels.stairs_top then zs[levels.stairs_top] = true end
     for name, z in pairs(levels) do
+        -- Only numbers are z-levels. A stray string here silently turned the
+        -- gate scan's level set into nonsense once already.
+        if type(z) ~= 'number' then goto continue end
         zs[z] = true
         if name == 'apartments' then
             for dz = 1, 4 do zs[z - dz] = true end
         end
+        ::continue::
     end
     return zs
 end
@@ -841,6 +921,7 @@ function best_anchor(cx, cy, min_quality)
     local best
     for _, c in ipairs(candidate_anchors(cx, cy)) do
         local levels, report = survey(c.x, c.y)
+        local mode = plan_farming_mode
         if not levels then
             table.insert(rejected, ('%d,%d: %s'):format(c.x, c.y, tostring(report)))
         else
@@ -855,7 +936,7 @@ function best_anchor(cx, cy, min_quality)
                     :format(c.x, c.y, quality))
             elseif not best or score > best.score then
                 best = {x = c.x, y = c.y, levels = levels, report = report,
-                        quality = quality, score = score}
+                        quality = quality, score = score, farming_mode = mode}
             end
         end
     end
@@ -897,6 +978,7 @@ function autostart(min_quality)
 
     plan.anchor = {x = best.x, y = best.y}
     plan.levels = best.levels
+    plan.farming_mode = best.farming_mode
     plan.step = 1
     plan.orders_done = {}
     plan.attempts = {}
@@ -1311,6 +1393,7 @@ local function cmd_here()
     local plan = load_plan()
     plan.anchor = {x = cx, y = cy}
     plan.levels = levels
+    plan.farming_mode = plan_farming_mode
     plan.step = 1
     plan.orders_done = {}
     save_plan()
@@ -1336,9 +1419,19 @@ local function cmd_status()
         :format(plan.anchor.x, plan.anchor.y, plan.step, #PLAN, plan.auto and 'ON' or 'off'))
     if plan.levels then
         local names = {}
-        for name, z in pairs(plan.levels) do table.insert(names, ('%s=%d'):format(name, z)) end
+        for name, z in pairs(plan.levels) do
+            if type(z) == 'number' then
+                table.insert(names, ('%s=%d'):format(name, z))
+            end
+        end
         table.sort(names)
         print('  levels: ' .. table.concat(names, '  '))
+        if plan.farming_mode and plan.farming_mode ~= 'soil' then
+            print('  farming: ' .. plan.farming_mode ..
+                (plan.farming_mode == 'irrigate'
+                    and '  -- no dry soil: needs surface farms or a muddied floor'
+                    or '  -- shallower than preferred'))
+        end
     end
     local step = PLAN[plan.step]
     if not step then

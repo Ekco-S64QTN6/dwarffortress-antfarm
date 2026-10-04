@@ -33,7 +33,9 @@ end
 
 --loop runs through list of all engravings checking each using is_good_engraving and if bad gets deleted
 local cleanup = 0
-local engravings = df.global.world.event.engravings
+-- v50 moved engravings under world.event; on 0.47 they live on world itself,
+-- and the v50 path raised on every scheduled run.
+local engravings = df.global.world.engravings
 for index = #engravings-1,0,-1 do
     local engraving = engravings[index]
     if not is_good_engraving(engraving) then

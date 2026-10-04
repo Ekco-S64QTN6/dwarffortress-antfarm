@@ -566,6 +566,133 @@ class LifecycleHandlers(unittest.TestCase):
                          "engine.py is running its own standing maintenance timer again")
 
 
+class StartupSequence(unittest.TestCase):
+    """One command has to take a cold machine to a fort that is being played.
+
+    Each check below corresponds to something that actually went wrong on a live
+    run: the plan file outliving its fort, a string landing in the z-level table,
+    the arrival text stopping an unattended start, and the launcher asking a
+    question instead of just going.
+    """
+
+    @staticmethod
+    def _read(path):
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_launcher_needs_no_input(self):
+        src = self._read("start_antfarm.sh")
+        # A bare invocation must run everything, not print a menu.
+        self.assertRegex(src, r"''\|--go\|-g\)\s*launch_all",
+                         "a bare ./start_antfarm.sh no longer runs launch_all")
+        self.assertIn("--menu", src, "the menu should still be reachable")
+
+    def test_the_launcher_distinguishes_a_fort_from_a_bare_world(self):
+        """world.sav means there is a fortress to continue; world.dat alone means
+        a generated world that still needs an embark. Confusing the two either
+        re-embarks over a live fort or sits on the title screen."""
+        src = self._read("start_antfarm.sh")
+        self.assertIn("world.sav", src)
+        self.assertIn("world.dat", src)
+
+    def test_autostart_dismisses_the_arrival_text(self):
+        """An unattended embark sat on the intro textviewer indefinitely: the
+        watchdog can clear it, but only while a client is driving a fort, and at
+        embark time there is no fort yet."""
+        src = self._read("game/hack/scripts/antfarm_autostart.lua")
+        block = src.split("viewscreen_textviewerst', scr)", 1)
+        self.assertEqual(len(block), 2, "autostart no longer handles textviewerst")
+        self.assertIn("LEAVESCREEN", block[1][:400])
+
+    def test_autostart_starts_the_build(self):
+        """Reaching dwarfmode is not playing; without this the fort idles."""
+        src = self._read("game/hack/scripts/antfarm_autostart.lua")
+        self.assertIn("antfarm_blueprint", src)
+
+    def test_the_plan_is_stamped_with_its_fort(self):
+        """The plan file survived across forts: a fresh 7-dwarf embark reported
+        'step 15/22, surface z=62' while its dwarves stood on z=63 of a different
+        map, and applied late-stage blueprints at the old fort's coordinates."""
+        src = self._read("game/hack/scripts/antfarm_blueprint.lua")
+        self.assertIn("fort_identity", src)
+        self.assertIn("plan_is_foreign", src)
+        # site_id alone repeats across unsaved forts; the identity must be richer.
+        ident = src.split("local function fort_identity()", 1)[1][:700]
+        self.assertIn("global_min_x", ident,
+                      "fort identity must include the embark origin: two forts "
+                      "embarked without a save in between share a site_id")
+
+    def test_the_level_table_holds_only_z_levels(self):
+        """`levels` is fed to fort_zlevels(), which turns every value into a
+        z-level for the gate scan, and to the status printer, which formats each
+        with %d. A mode string in there broke both."""
+        src = self._read("game/hack/scripts/antfarm_blueprint.lua")
+        self.assertNotIn("levels.farming_mode =", src,
+                         "farming_mode must live on the plan, not in levels")
+        self.assertIn("if type(z) ~= 'number' then goto continue end", src,
+                      "fort_zlevels must ignore non-numeric values")
+
+    def test_the_embark_scanner_skips_occupied_tiles(self):
+        """DF silently refuses to embark on a world tile that already holds a
+        site -- pressing `e` does nothing. The scanner ranked a previous fort's
+        own tile as the best site and then reported success."""
+        src = self._read("game/hack/scripts/antfarm_embark.lua")
+        self.assertIn("occupied_tiles", src)
+        self.assertIn("rejected.occupied", src)
+
+
+class VersionCompatibility(unittest.TestCase):
+    """Vendored scripts were taken from DFHack master and declared "verified to
+    run purely on DFHack 0.47 structures and pass `luac -p`". luac checks syntax,
+    not whether a symbol exists, so six scripts shipped broken and raised on every
+    scheduled run: fix/stuck-worship, fix/engravings, fix/stuck-squad,
+    antfarm_autoslab, justice and allneeds.
+
+    These are the v50-only symbols that caused it. Any new appearance is a script
+    that will fail the moment its code path runs.
+    """
+
+    V50_ONLY = [
+        r"df\.global\.plotinfo",              # renamed from `ui` in v50
+        r"dfhack\.units\.getCitizens\(",
+        r"dfhack\.units\.getReadableName",
+        r"df\.global\.world\.event\.",       # engravings moved under world.event
+        r"flags[123]\.bits",                   # v50 bitfield wrapper
+        r"df\.global\.game\.main_interface",
+        r"dfhack\.maps\.getWalkableGroup",
+    ]
+
+    def _scripts(self):
+        import glob
+        paths = []
+        paths += glob.glob("game/hack/scripts/antfarm_*.lua")
+        paths += glob.glob("game/hack/scripts/fix/*.lua")
+        for extra in ("allneeds", "justice", "suspend"):
+            paths += glob.glob("game/hack/scripts/%s.lua" % extra)
+        return sorted(paths)
+
+    def test_no_v50_only_api_in_scripts_we_own_or_schedule(self):
+        import re
+        offenders = []
+        for path in self._scripts():
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    code = line.split("--", 1)[0]      # ignore comments
+                    for pat in self.V50_ONLY:
+                        if re.search(pat, code):
+                            offenders.append("%s:%d %s" % (path, n, code.strip()[:70]))
+        self.assertFalse(offenders,
+                         "v50-only API used on a 0.47 build:\n  " + "\n  ".join(offenders))
+
+    def test_the_stub_does_not_offer_apis_the_game_lacks(self):
+        """The stub used to provide getReadableName, which 0.47 does not have, so
+        autoslab's tests passed while the live fort raised."""
+        with open("tests/df_stub.lua", encoding="utf-8") as fh:
+            stub = fh.read()
+        self.assertNotIn("getReadableName = function", stub)
+        self.assertIn("isGhost = function", stub)
+
+
 class SubsystemContracts(unittest.TestCase):
     """The server aggregates each Lua subsystem's report() into antfarm_state.json.
     That aggregator was written against guessed field names: it tested

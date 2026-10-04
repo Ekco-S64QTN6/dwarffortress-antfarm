@@ -1,4 +1,17 @@
 -- antfarm_autoslab.lua
+
+-- dfhack.units.getReadableName is a v50 addition; on this 0.47 build it is nil
+-- and raises. This path only runs when there is actually something to name, so
+-- it stayed latent until a ghost (or a shuffled prayer target) appeared.
+local function readable_name(unit)
+    local ok, vis = pcall(dfhack.units.getVisibleName, unit)
+    if ok and vis then
+        local ok2, t = pcall(dfhack.TranslateName, vis)
+        if ok2 and t and t ~= '' then return t end
+    end
+    return 'unit #' .. tostring(unit and unit.id or '?')
+end
+
 -- Automatically queue orders to carve memorial slabs for ghosts before tantrums occur.
 --
 -- DFHack 0.47 does not have an autoslab plugin. When dwarves die with unreachable
@@ -24,15 +37,17 @@ local function get_ghosts()
 
     for i = 0, #units - 1 do
         local u = units[i]
-        local is_ghost = false
-        if u.flags3 and u.flags3.bits and u.flags3.bits.ghostly then
-            is_ghost = true
-        end
+        -- `flags3.bits.ghostly` is a v50 shape and raises here (AGENTS.md
+        -- 6.1.11: prefer dfhack.units.* over raw flag access -- the API helpers
+        -- are stable across versions, the bitfields are not). This errored on
+        -- every scheduled run.
+        local ok_ghost, is_ghost = pcall(dfhack.units.isGhost, u)
+        is_ghost = ok_ghost and is_ghost or false
 
         if is_ghost and u.hist_figure_id and u.hist_figure_id ~= -1 then
             local name = "Unknown Ghost"
             pcall(function()
-                name = dfhack.units.getReadableName(u)
+                name = readable_name(u)
             end)
             table.insert(ghosts, {
                 unit = u,

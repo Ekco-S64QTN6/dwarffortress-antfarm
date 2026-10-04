@@ -1,5 +1,18 @@
 local argparse = require('argparse')
 
+-- dfhack.units.getReadableName is a v50 addition; on this 0.47 build it is nil
+-- and raises. This path only runs when there is actually something to name, so
+-- it stayed latent until a ghost (or a shuffled prayer target) appeared.
+local function readable_name(unit)
+    local ok, vis = pcall(dfhack.units.getVisibleName, unit)
+    if ok and vis then
+        local ok2, t = pcall(dfhack.TranslateName, vis)
+        if ok2 and t and t ~= '' then return t end
+    end
+    return 'unit #' .. tostring(unit and unit.id or '?')
+end
+
+
 local verbose, quiet = false, false
 argparse.processArgsGetopt({...}, {
     {'v', 'verbose', handler=function() verbose = true end},
@@ -88,7 +101,20 @@ local function get_prayer_targets(unit)
 end
 
 local count = 0
-for _,unit in ipairs(dfhack.units.getCitizens(false, true)) do
+-- dfhack.units.getCitizens does not exist on this 0.47 build (it is a v50
+-- addition) and the script raised before touching a single unit. isCitizen /
+-- isActive are the stable equivalents.
+local function fort_citizens()
+    local out = {}
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, is = pcall(dfhack.units.isCitizen, u)
+        local ok_alive, alive = pcall(dfhack.units.isActive, u)
+        if ok and is and (not ok_alive or alive) then table.insert(out, u) end
+    end
+    return out
+end
+
+for _,unit in ipairs(fort_citizens()) do
     local prayer_targets = get_prayer_targets(unit)
     if not unit.status.current_soul or not prayer_targets then
         goto next_unit
@@ -97,7 +123,7 @@ for _,unit in ipairs(dfhack.units.getCitizens(false, true)) do
     if shuffle_prayer_needs(needs, prayer_targets) then
         count = count + 1
         if verbose then
-            print('Shuffled prayer target for '..dfhack.df2console(dfhack.units.getReadableName(unit)))
+            print('Shuffled prayer target for '..dfhack.df2console(readable_name(unit)))
         end
     end
     ::next_unit::

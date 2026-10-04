@@ -298,12 +298,27 @@ function M.new()
             return blocks_by_key[key]
         end,
     }
+    -- Deliberately mirrors what DFHack 0.47 actually exposes.
+    --
+    -- `getReadableName` used to live here and does NOT exist in this DFHack: it
+    -- is a v50 addition. Providing it let vendored v50 code pass the suite while
+    -- raising on the live fort, which is exactly the divergence the stub exists
+    -- to prevent (CLAUDE.md: a wrong field name must fail a test, not only fail
+    -- live). It is absent now, so anything calling it fails here first.
     dfhack.units = {
         isCitizen = function(u) return u and u.citizen ~= false end,
         isActive = function(u) return u and u.active ~= false end,
         getPosition = function(u) return u.pos end,
-        getReadableName = function(u) return u and (u.name or "Dwarf Name") or "Unknown" end,
+        -- 0.47 keeps the ghost bit directly on flags3; there is no `.bits`.
+        isGhost = function(u)
+            return (u and u.flags3 and u.flags3.ghostly) and true or false
+        end,
+        getVisibleName = function(u) return u and (u.name_obj or {name = u.name}) or nil end,
     }
+    dfhack.TranslateName = function(n)
+        if type(n) == 'table' then return n.name or 'Dwarf Name' end
+        return tostring(n or 'Dwarf Name')
+    end
     dfhack.job = {checkDesignationsNow = function() end}
     -- ---- world map, for embark site selection ------------------- --
     -- region_map[x][y] with the fields antfarm_embark scores on.

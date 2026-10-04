@@ -611,6 +611,25 @@ local function subsystems_summary()
         }
     end)
 
+    ask('antfarm_checklist', function(rep)
+        summary.checklist = {
+            pass = rep.pass or 0,
+            fail = rep.fail or 0,
+            todo = rep.todo or 0,
+            failing = arr(rep.failing or {}),
+        }
+    end)
+
+    ask('antfarm_sustenance', function(rep)
+        summary.sustenance = {
+            drink = rep.drink or 0,
+            drink_short = rep.drink_short and true or false,
+            plants = rep.plants or 0,
+            workshops = arr(rep.workshops or {}),
+            gather_zone = rep.gather_zone and true or false,
+        }
+    end)
+
     ask('antfarm_military', function(rep)
         summary.military = {
             squads = rep.squads or 0,
@@ -863,6 +882,18 @@ local function handle_command(cmd)
         local sub = (rest ~= '' and rest) or 'traps'
         local ok, err = pcall(dfhack.run_command, 'antfarm_defence ' .. sub)
         if not ok then dfhack.printerr('antfarm_server: defence failed: ' .. tostring(err)) end
+    elseif verb == 'checklist' then
+        local sub = (rest ~= '' and rest) or ''
+        local ok, err = pcall(dfhack.run_command, ('antfarm_checklist ' .. sub))
+        if not ok then dfhack.printerr('antfarm_server: checklist failed: ' .. tostring(err)) end
+    elseif verb == 'sustenance' then
+        local sub = (rest ~= '' and rest) or 'all'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_sustenance ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: sustenance failed: ' .. tostring(err)) end
+    elseif verb == 'autostart' then
+        local sub = (rest ~= '' and rest) or 'go'
+        local ok, err = pcall(dfhack.run_command, 'antfarm_autostart ' .. sub)
+        if not ok then dfhack.printerr('antfarm_server: autostart failed: ' .. tostring(err)) end
     elseif verb == 'military' then
         local sub = (rest ~= '' and rest) or 'enlist'
         local ok, err = pcall(dfhack.run_command, 'antfarm_military ' .. sub)
@@ -1045,7 +1076,7 @@ end
 -- the fort's only source of what it cannot make (trade), then people, rooms and
 -- defence.
 local SUBSYSTEMS = {
-    'antfarm_orders', 'antfarm_trade', 'antfarm_nobles',
+    'antfarm_sustenance', 'antfarm_orders', 'antfarm_trade', 'antfarm_nobles',
     'antfarm_locations', 'antfarm_quarters', 'antfarm_defence',
     'antfarm_military',
 }

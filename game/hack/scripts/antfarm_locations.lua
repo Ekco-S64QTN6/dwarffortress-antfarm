@@ -87,6 +87,69 @@ function dining_area()
 end
 
 -- ---------------------------------------------------------------- --
+-- indoor space, before there is any furniture                      --
+-- ---------------------------------------------------------------- --
+
+-- A dining room needs tables and chairs, and Dreamfort does not build those
+-- until step 9. Until then the only meeting area is the embark default on the
+-- surface, so the whole fort stands outside -- in the rain, which in 0.47 is a
+-- real and compounding stress source (AGENTS.md 4.3). An empty dug room is not
+-- a dining hall, but it has a roof, and that is the part that matters.
+--
+-- Finds the biggest block of already-dug indoor floor on the shallowest dug
+-- level near the anchor.
+local function indoor_rect(ax, ay, z, want)
+    local function indoor(x, y)
+        local b = dfhack.maps.getTileBlock(x, y, z)
+        if not b then return false end
+        local a = df.tiletype.attrs[b.tiletype[x % 16][y % 16]]
+        local d = b.designation[x % 16][y % 16]
+        return a.shape == df.tiletype_shape.FLOOR and not d.outside
+            and (not d.flow_size or d.flow_size == 0)
+    end
+    -- Grow a square outward from the densest indoor spot we can find.
+    local best, best_n
+    for size = want, 5, -1 do
+        for ox = -20, 20, 2 do
+            for oy = -20, 20, 2 do
+                local x0, y0, n, total = ax + ox, ay + oy, 0, 0
+                for x = x0, x0 + size - 1 do
+                    for y = y0, y0 + size - 1 do
+                        total = total + 1
+                        if indoor(x, y) then n = n + 1 end
+                    end
+                end
+                if total > 0 and n == total and (not best_n or n > best_n) then
+                    best_n, best = n, {x1 = x0, y1 = y0, x2 = x0 + size - 1,
+                                       y2 = y0 + size - 1, z = z, count = 0}
+                end
+            end
+        end
+        if best then return best end
+    end
+    return nil
+end
+
+-- The shallowest level that has been dug out, which is where dwarves will
+-- actually go: deeper is a longer walk from the stairs.
+local function dug_levels(ax, ay)
+    local out = {}
+    local ok, bp = pcall(reqscript, 'antfarm_blueprint')
+    local levels
+    if ok and bp and bp.plan_summary then
+        local okp, sum = pcall(bp.plan_summary)
+        if okp and sum then levels = sum.levels end
+    end
+    if not levels then return out end
+    for _, name in ipairs({'farming', 'services', 'industry', 'guildhall'}) do
+        local z = levels[name]
+        if type(z) == 'number' then table.insert(out, z) end
+    end
+    table.sort(out, function(a, b) return a > b end)   -- shallowest first
+    return out
+end
+
+-- ---------------------------------------------------------------- --
 -- the meeting hall                                                 --
 -- ---------------------------------------------------------------- --
 
@@ -157,8 +220,27 @@ end
 function ensure_meeting_hall()
     local area = dining_area()
     if not area then
-        return false, ('no dining room found (need at least %d tables/chairs together)')
-            :format(MIN_DINING_FURNITURE)
+        -- No furniture yet: take any roofed, dug room over leaving the fort
+        -- standing in a field. This is replaced automatically once the dining
+        -- room exists, because dining_area() then wins.
+        local ax, ay = nil, nil
+        local ok, bp = pcall(reqscript, 'antfarm_blueprint')
+        if ok and bp and bp.plan_summary then
+            local okp, sum = pcall(bp.plan_summary)
+            if okp and sum and sum.anchor then ax, ay = sum.anchor.x, sum.anchor.y end
+        end
+        if not ax then
+            return false, ('no dining room and no anchor (need %d tables/chairs, '
+                .. 'or a dug room)'):format(MIN_DINING_FURNITURE)
+        end
+        for _, z in ipairs(dug_levels(ax, ay)) do
+            area = indoor_rect(ax, ay, z, 11)
+            if area then break end
+        end
+        if not area then
+            return false, ('no dining room and nothing dug indoors yet (need %d '
+                .. 'tables/chairs, or a dug room)'):format(MIN_DINING_FURNITURE)
+        end
     end
 
     -- Already have a meeting area on the dining level? Then only the surface

@@ -103,6 +103,27 @@ end
 -- ---------------------------------------------------------------- --
 
 -- Returns a list of {x, y, spread, score, why} sorted best-first.
+-- World tiles that already hold a site.
+--
+-- DF silently refuses to embark on a tile that contains one: pressing `e` does
+-- nothing at all, no message, no screen change. The scanner used to rank such
+-- tiles like any other, and on a world containing a previous fort it picked that
+-- fort's own tile as the best site -- scoring it "[clear]", because the only
+-- checks were aquifer and salt -- then reported "embarked." while the game sat
+-- on the site screen forever. An occupied tile needs reclaim, not embark, so it
+-- is not a candidate.
+local function occupied_tiles()
+    local set = {}
+    local ok = pcall(function()
+        for _, site in ipairs(df.global.world.world_data.sites) do
+            set[site.pos.x .. ',' .. site.pos.y] =
+                tostring(df.world_site_type[site.type] or site.type)
+        end
+    end)
+    if not ok then return {} end
+    return set
+end
+
 function scan(width, height)
     width, height = width or WIDTH, height or HEIGHT
     local wd = world_data()
@@ -122,7 +143,8 @@ function scan(width, height)
     local function at(x, y) return map[x]:_displace(y) end
     local out = {}
     local rejected = {ocean = 0, slope = 0, evil = 0, savage = 0,
-                      cold = 0, barren = 0}
+                      cold = 0, barren = 0, occupied = 0}
+    local occupied = occupied_tiles()
 
     for x = 0, W - width do
         for y = 0, H - height do
@@ -133,6 +155,11 @@ function scan(width, height)
 
             for dx = 0, width - 1 do
                 for dy = 0, height - 1 do
+                    if occupied[(x + dx) .. ',' .. (y + dy)] then
+                        rejected.occupied = rejected.occupied + 1
+                        ok = false
+                        break
+                    end
                     local e = at(x + dx, y + dy)
                     local elev = e.elevation
                     if elev < OCEAN_LEVEL then
@@ -437,7 +464,20 @@ function embark_here()
         return false
     end
     key(scr, 'SETUP_EMBARK')
-    print('antfarm_embark: embarking.')
+    -- Keys are queued and applied on a later frame, so the screen cannot be
+    -- re-read here (CLAUDE.md: async_keys). Claiming success in this call is how
+    -- "embarked." ended up in the log of a fort that never embarked -- check on
+    -- a later frame and say so plainly if nothing happened.
+    dfhack.timeout(20, 'frames', function()
+        if on_site_screen() then
+            dfhack.printerr('antfarm_embark: SETUP_EMBARK did not take -- still on '
+                .. 'the site screen. The tile most likely already holds a site '
+                .. '(which needs reclaim, not embark). Try "antfarm_embark next".')
+        else
+            print('antfarm_embark: embarked.')
+        end
+    end)
+    print('antfarm_embark: embark key sent; verifying on a later frame.')
     return true
 end
 
@@ -461,9 +501,10 @@ elseif args[1] == 'scan' then
     end
     print(('antfarm_embark: %d candidate %dx%d site(s) with elevation spread <= %d')
         :format(#ranked, WIDTH, HEIGHT, MAX_ELEV_SPREAD))
-    print(('  rejected: %d ocean, %d sloped, %d evil, %d savage, %d cold, %d barren')
+    print(('  rejected: %d ocean, %d sloped, %d evil, %d savage, %d cold, '
+           .. '%d barren, %d already occupied by a site')
         :format(rejected.ocean, rejected.slope, rejected.evil, rejected.savage,
-                rejected.cold, rejected.barren))
+                rejected.cold, rejected.barren, rejected.occupied))
     for i = 1, math.min(show, #ranked) do
         local s = ranked[i]
         print(('  %2d. %3d,%-3d  score %6.0f  spread %d  veg %3d  temp %3d  '

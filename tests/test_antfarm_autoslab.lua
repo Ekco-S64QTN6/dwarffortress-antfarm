@@ -45,7 +45,7 @@ do
         id = 42,
         name = "Urist McGhost",
         hist_figure_id = 101,
-        flags3 = {bits = {ghostly = true}},
+        flags3 = {ghostly = true},
     }
     w.df.global.world.units.all:push(ghost_unit)
 
@@ -85,7 +85,7 @@ do
         id = 43,
         name = "Kogan McHaunted",
         hist_figure_id = 202,
-        flags3 = {bits = {ghostly = true}},
+        flags3 = {ghostly = true},
     }
     w.df.global.world.units.all:push(ghost_unit)
 

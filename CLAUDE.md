@@ -13,7 +13,9 @@ reading before touching any Lua. This file is the orientation; that one is the m
 
 ```bash
 ./tests/run_all.sh                  # everything that does not need the game: syntax + all suites
-./start_antfarm.sh                  # menu: game / dashboard / chat bridge / status / utilities
+./start_antfarm.sh                  # ONE BUTTON: world if needed, embark or continue, dashboard, play
+./start_antfarm.sh --menu           # the individual pieces
+./start_antfarm.sh --status         # what is running right now
 
 lua tests/test_antfarm_ui.lua       # one Lua suite
 .venv/bin/python -m tests.test_engine                       # one Python suite
@@ -34,6 +36,7 @@ fastest way to verify anything touching DFHack:
 
 ```bash
 cd game && nohup ./dfhack &                  # launch
+./dfhack-run antfarm_checklist               # can this fort survive? (read-only)
 ./dfhack-run antfarm_ui status               # any DFHack command, against the running game
 ./dfhack-run lua 'print(dfhack.gui.getCurFocus(true))'
 ./df -gen 1 RANDOM TOLKIEN_EPIC_MEDIUM       # generate a world, no keyboard needed
@@ -68,6 +71,9 @@ game/  (Dwarf Fortress + DFHack, Lua)          antfarm/  (Python)
   antfarm_defence.lua  traps/guards
   antfarm_quarters.lua bedrooms
   antfarm_military.lua squads/training
+  antfarm_sustenance.lua food/drink/labour
+  antfarm_checklist.lua fort viability
+  antfarm_autostart.lua title -> playing
 ```
 
 **Transport** (`antfarm/client.py` ⟷ `antfarm_server.lua`): `game/antfarm_state.json` is rewritten
@@ -112,6 +118,40 @@ Three invariants:
   them. Viewscreen dismissal is additionally gated on a client actually driving the fort.
 - **Verify the screen before every keystroke.** `start_driver()` is the coroutine primitive for
   multi-step UI (a port of df-ai's `ExclusiveCallback`); blind keystrokes corrupt forts.
+
+### Starting a fort (`antfarm_autostart.lua`)
+
+`./start_antfarm.sh` with no arguments is the whole startup: generate a world with
+`TOLKIEN_EPIC_MEDIUM` if there is none, continue an existing fort or embark a new
+one, open the dashboard, and begin playing. The shell decides only *what* is on
+disk (`world.sav` = a fort to continue, `world.dat` alone = a world needing an
+embark); `antfarm_autostart` drives the screens.
+
+It is a screen-driven stepper, not a fixed script: each poll looks at what is on
+screen and does the one thing that screen needs, so an unbounded wait (DF
+advancing world history) needs no sleep guesses. The sequence was mapped against a
+live 0.47 title screen — see the comment block in the file for the exact
+viewscreens and fields.
+
+Two things it must keep doing:
+
+* **Dismiss the arrival text.** An unattended embark sat on that textviewer
+  indefinitely. `antfarm_ui` can clear a textviewer, but its screen dismissal is
+  armed only while a client is driving a fort, and at embark time there is no fort.
+* **Start the build.** Reaching `dwarfmodest` is not playing; it anchors the
+  blueprint and turns auto mode on, because the Python engine's autobuild
+  heuristic reads a build plan that a brand-new embark has not got yet.
+
+### Survival is never gated (`antfarm_sustenance.lua`)
+
+Dreamfort's order assumes a player who will notice the fort has no booze and fix
+it by hand. Unattended, nobody does: a live fort reached twelve drinks with no
+still, no kitchen and no farm plot, because all three sit behind a dig gate held
+by a two-pick bottleneck. `antfarm_sustenance` places them regardless of build
+step, sites a ground-only gathering zone on the densest shrubs, and caps
+tool-limited labours to the tools that exist so autolabor stops parking dwarves on
+mining jobs they have no pick for. `docs/FORT-CHECKLIST.md` has the full list of
+what a fort needs and the priority-order problem that is still open.
 
 ### The guided build (`antfarm_blueprint.lua`)
 
@@ -186,5 +226,14 @@ silently disagreed before (a stripped trailing space made every nickname *clear*
   and triggers trade abandonment and war (AGENTS.md 6.27).
 - **Magma buildings require melting point ≥ 12,000 °U.** Non-magma-safe stone melts instantly upon contact
   with magma, destroying the workshop and flooding the room (AGENTS.md 6.29).
+
+- **Never write `manager_order.status` bits.** Forcing `validated`/`active` to make work
+  orders issue segfaulted DF silently — no error, no core, nothing in the log (AGENTS.md 6.1.12).
+  Read them; never write them.
+- **A plan belongs to one fort.** `antfarm_plan.json` is stamped with the fort's identity and
+  discarded when it does not match. `site_id` alone is not enough: two forts embarked without a
+  save in between share one.
+- **Furniture must be made before it can be placed.** `constructBuilding` for a bed or chair needs
+  the item to exist; without it DF cancels the job and the building quietly disappears.
 
 `config/` and `state/` hold operator data and are gitignored; `antfarm/` is code only.

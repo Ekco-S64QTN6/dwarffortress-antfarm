@@ -1,17 +1,56 @@
 # Remaining work
 
-Written 2026-09-18, after reviewing the handoff pass. This is the honest list of
-what is **not** done, what is done but **unverified**, and what is done and
-working. It supersedes the completion claims in
-[`HANDOFF_TO_CLAUDE.md`](HANDOFF_TO_CLAUDE.md) §2, several of which were wrong —
-see that file's §0 for the corrections.
-
-Dwarf Fortress was **not running** during this pass, so nothing below marked
-*unverified* has been exercised against a live fort.
+Updated 2026-10-04 after a session spent running a fort end to end. See
+[`FORT-CHECKLIST.md`](FORT-CHECKLIST.md) for what a fort needs and how to check it
+with one command.
 
 ---
 
-## 1. Done and verified against a live fort
+## 0. This session
+
+### Fixed and verified on a live fort
+
+| Thing | Evidence |
+| :-- | :-- |
+| **One-button startup** | `./start_antfarm.sh` took a cold machine to a playing fort in under 45s: world detect → DF window → dashboard → embark → build running |
+| **Title→embark automation** | `antfarm_autostart.lua`; sequence mapped against a live 0.47 title screen, not guessed |
+| **The arrival text** | An unattended embark sat on that textviewer indefinitely; now dismissed within a poll |
+| **Embark on an occupied tile** | The scanner ranked a previous fort's own tile best, pressed `e` (which DF silently ignores) and logged "embarked." Now 4006 occupied tiles are rejected and the keypress is verified on a later frame |
+| **Plan outliving its fort** | `antfarm_plan.json` is stamped with a fort identity and discarded on mismatch. A fresh 7-dwarf embark had been reporting "step 15/22, surface z=62" with its dwarves on z=63 of another map |
+| **`site_id` is not a fort identity** | Two forts embarked without a save in between both came out id 460 ("Lemisber", "Odrozzas"). Identity now includes the embark origin and name |
+| **A string in the z-level table** | `farming_mode` was stored in `levels`, which feeds `fort_zlevels()` (gate scans) and the `%d` status printer. Both broke; it lives on the plan now |
+| **Six scripts using v50 APIs** | `fix/stuck-worship`, `fix/engravings`, `fix/stuck-squad`, `antfarm_autoslab`, `justice`, `allneeds` all raised on every run. Fixed and each verified by actually running it |
+| **The stub was more permissive than the game** | It offered `getReadableName`, which 0.47 lacks — so autoslab's tests passed while the live fort raised. Removed; `isGhost` added |
+| **Survival gated behind digging** | `antfarm_sustenance.lua`: still/kitchen/farmer's workshop placed regardless of build step, ground-only gathering zone on the densest shrubs, tool-limited labours capped to tools on hand |
+| **Dwarves in the rain** | `antfarm_locations` now takes a bare dug indoor room as a meeting area when there is no dining furniture yet |
+| **The fort checklist** | `antfarm_checklist.lua`: 19 read-only checks in five groups. First run found 2 critical failures and 4 gaps that had been invisible |
+
+### Found and not yet fixed
+
+1. **Furniture cannot be placed before it is made.** `place_beds()` in
+   `antfarm_quarters` calls `constructBuilding` for beds; with no bed *items* in
+   the fort DF cancels the job and the building vanishes. It reported "placed 7
+   bed(s)" while creating none. The chain is: manager order → carpenter makes a
+   bed item → *then* place it. The module needs to queue the order and only place
+   when items exist.
+2. **Work orders were not issuing at all.** 61 manager orders, every one
+   `status.validated = false`, and no jobs at the still or carpenter — so no beds,
+   no booze, nothing. Cause not established. The manager was appointed and had no
+   office, which is the obvious suspect, but an earlier fort in the same setup
+   completed `Brew drink from plant` with no office either, so that explanation is
+   unproven. **Diagnose this before anything else**: it blocks the entire
+   production economy, and both the bed and booze failures above are downstream
+   of it.
+3. **I crashed the fort chasing that.** Writing `status.validated`/`status.active`
+   across the order list segfaulted DF silently — no error, no core, nothing in
+   the log. Recorded as AGENTS.md 6.1.12: read those bits, never write them. The
+   fort autosaved first and was recoverable.
+4. **`frequency = Daily`** on the brew orders is worth checking — a daily order
+   issues a limited batch per day, which on a young fort may simply be too slow.
+
+---
+
+## 1. Verified in earlier sessions
 
 These were exercised on the running fort (year 25, pop 31→59) in an earlier
 session and produced the stated effect:
@@ -131,6 +170,15 @@ flipped as soon as locations exist.
 The pasture zone is created on grass with a farmer's workshop beside it, but it
 is not **fenced** — no wall ring, no door. Building the enclosure is a
 construction job the module does not queue.
+
+### 3.6b. Priority order
+
+Knowing what a fort needs is not knowing when. Dreamfort's 22 steps are a curated
+build order, but it assumes a player who notices the fort has no booze at step 7
+and fixes it by hand. The rule now followed is **survival items are never gated** —
+see `FORT-CHECKLIST.md` §3 — but that is a rule of thumb, not a schedule. Matching
+a known-good step-by-step order (the 0.47-era tutorial series encode one) against
+the subsystems is still to do.
 
 ### 3.7. No arbiter
 
