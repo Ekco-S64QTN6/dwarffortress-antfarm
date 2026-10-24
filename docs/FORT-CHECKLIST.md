@@ -152,7 +152,7 @@ priority *budget* — two subsystems can still both decide to consume every idle
 dwarf.
 
 Designing that budget is the last significant piece; see
-[`REMAINING-WORK.md`](REMAINING-WORK.md) §3.7.
+[`ROADMAP.md`](ROADMAP.md) §3.7.
 
 ---
 

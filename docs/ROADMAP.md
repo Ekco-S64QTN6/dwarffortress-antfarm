@@ -226,16 +226,15 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
 
 ---
 
-## 4. Known wrong in the docs
+## 4. Easily-mistaken facts
 
-* `HANDOFF_TO_CLAUDE.md` states `MIN_FARMING_DEPTH = 3` twice. The code says
-  **2**, deliberately: the soil column on this embark is two levels deep, and a
-  depth of 3 puts the farms in bare rock where no plot can be built without
-  irrigating the floor to mud first. Do not change the code to match the text.
-* `HANDOFF_TO_CLAUDE.md` §2.2 lists `fix/sleepers.lua` under "sleeping unit
-  lock". It is the genuine DFHack script, but it is **adventure-mode only** — it
-  clears `ALARM_INTRUDER` on camp army controllers. It is correctly not
-  scheduled in `onMapLoad.init`.
+* `MIN_FARMING_DEPTH = 2` is **deliberate**, not a typo for 3: the soil column
+  on this embark is two levels deep, and a depth of 3 puts the farms in bare
+  rock where no plot can be built without irrigating the floor to mud first.
+  Do not "fix" it to 3.
+* `fix/sleepers.lua` is a genuine DFHack script but **adventure-mode only** — it
+  clears `ALARM_INTRUDER` on camp army controllers — so it is correctly *not*
+  scheduled in `onMapLoad.init`. Do not add it.
 * `community_blueprints/` is gitignored: it contains four nested `.git`
   directories from cloned repos, which git would record as broken submodule
   links. The curated, used copies live in `game/blueprints/community/`.
