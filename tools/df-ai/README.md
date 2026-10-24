@@ -20,4 +20,4 @@ encodes a failure someone already hit. `antfarm_ui.lua` is largely a port of its
 
 Note that a port is not a test: `antfarm_military create` writes `df.squad`
 structures by hand and has not yet been exercised against a live fort. See
-`docs/REMAINING-WORK.md` §2.
+`docs/ROADMAP.md` §2.

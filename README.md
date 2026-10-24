@@ -25,17 +25,19 @@ steer the whole thing.
 | `config/` | Your credentials. Gitignored; copy `config/twitch.example.json` to start |
 | `state/` | Runtime data: claims, the generated Legends database. Gitignored |
 
-Documentation:
+**Guides:**
 [fortress construction](docs/fortress-build.md) ·
-[community blueprints research](docs/FORT_BLUEPRINTS_RESEARCH.md) ·
-[DF 0.47 RAW modding & bugfixes](docs/DF_0.47_RAW_MODDING_AND_BUGFIXES_REPORT.md) ·
-[handoff to Claude](docs/HANDOFF_TO_CLAUDE.md) ·
-[automation failure taxonomy](docs/Gemini38_Automation_Gaps.md) ·
-[live fort gaps postmortem](docs/AUTOMATION-GAPS.md) ·
-[settings audit](docs/settings-audit.md) ·
+[fort checklist](docs/FORT-CHECKLIST.md) ·
 [modding notes](docs/modding.md) ·
-[automation research](docs/automation-research.md) ·
-[agent & maintainer guide](AGENTS.md)
+[agent & maintainer guide](AGENTS.md) ·
+[roadmap](docs/ROADMAP.md)
+
+**Reference & research** (background for the DF-automation work; not a to-do list):
+[DF 0.47 RAW modding](docs/DF_0.47_RAW_MODDING_AND_BUGFIXES_REPORT.md) ·
+[community blueprints](docs/FORT_BLUEPRINTS_RESEARCH.md) ·
+[settings audit](docs/settings-audit.md) ·
+[automation gaps & designs](docs/AUTOMATION-GAPS.md) ·
+[automation research](docs/automation-research.md)
 
 **Jump to:**
 [Running it](#1-running-it) ·

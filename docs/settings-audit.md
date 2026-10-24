@@ -21,9 +21,9 @@ Dwarf Fortress uses a custom declarative syntax enclosed in square brackets `[..
 ### 2.1. Creatures (`creature_*.txt`)
 Creature raw files define the biology, attributes, castes, sizing, and behaviors of every animal and intelligent race in the game.
 *   **Key Files**:
-    *   [creature_standard.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/creature_standard.txt) (contains Dwarves, Elves, Humans, Goblins, Kobolds)
-    *   [creature_domestic.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/creature_domestic.txt) (livestock, pets, and pack animals)
-    *   [creature_subterranean.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/creature_subterranean.txt) (underground wildlife, cave crocodiles, etc.)
+    *   `game/raw/objects/creature_standard.txt` (contains Dwarves, Elves, Humans, Goblins, Kobolds)
+    *   `game/raw/objects/creature_domestic.txt` (livestock, pets, and pack animals)
+    *   `game/raw/objects/creature_subterranean.txt` (underground wildlife, cave crocodiles, etc.)
 *   **Example Block (`[CREATURE:DWARF]`)**:
     *   `[CREATURE:DWARF]` declares the creature ID.
     *   `[INTELLIGENT]`/`[CAN_LEARN]`/`[CAN_SPEAK]`: Gives creatures human-like cognition, enabling social interactions, skill progression, and civ participation.
@@ -35,7 +35,7 @@ Creature raw files define the biology, attributes, castes, sizing, and behaviors
 
 ### 2.2. Civilizations & Entities (`entity_default.txt`)
 Entities define the political structure, weapons/armor permissions, ethics, and cultural values of civilizations.
-*   **Key File**: [entity_default.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/entity_default.txt)
+*   **Key File**: `game/raw/objects/entity_default.txt`
 *   **Key Modding Tags**:
     *   `[ENTITY:MOUNTAIN]` (Dwarves), `[ENTITY:PLAINS]` (Humans), `[ENTITY:FOREST]` (Elves), `[ENTITY:EVIL]` (Goblins).
     *   `[SITE_CONTROLLABLE]`: Allows the player to play as this civilization in fortress mode.
@@ -47,11 +47,11 @@ Entities define the political structure, weapons/armor permissions, ethics, and 
 ### 2.3. Items (`item_*.txt`)
 Item raw files determine the stats, size, skill mapping, and characteristics of weapons, armor, tools, and clothing.
 *   **Key Files**:
-    *   [item_weapon.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_weapon.txt) (swords, axes, war hammers, whips)
-    *   [item_armor.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_armor.txt) (breastplates, mail shirts)
-    *   [item_helm.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_helm.txt), [item_pants.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_pants.txt), [item_gloves.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_gloves.txt), [item_shoes.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_shoes.txt)
-    *   [item_ammo.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_ammo.txt) (bolts, arrows)
-    *   [item_tool.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/item_tool.txt) (nest boxes, hives, minecarts, wheelbarrows)
+    *   `game/raw/objects/item_weapon.txt` (swords, axes, war hammers, whips)
+    *   `game/raw/objects/item_armor.txt` (breastplates, mail shirts)
+    *   `game/raw/objects/item_helm.txt`, `game/raw/objects/item_pants.txt`, `game/raw/objects/item_gloves.txt`, `game/raw/objects/item_shoes.txt`
+    *   `game/raw/objects/item_ammo.txt` (bolts, arrows)
+    *   `game/raw/objects/item_tool.txt` (nest boxes, hives, minecarts, wheelbarrows)
 *   **Key Modding Tags**:
     *   `[SIZE:800]`: Determines weight and encumbrance.
     *   `[TWO_HANDED:47500]`/`[MINIMUM_SIZE:42500]`: Restricts one-handed use based on user creature size (measured in cubic centimeters).
@@ -60,8 +60,8 @@ Item raw files determine the stats, size, skill mapping, and characteristics of 
 ### 2.4. Inorganics & Materials (`inorganic_*.txt` & `material_template_default.txt`)
 Defines the physical properties of metals, stone types, gems, and soil.
 *   **Key Files**:
-    *   [inorganic_metal.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/inorganic_metal.txt) (iron, steel, copper, adamantine)
-    *   [inorganic_stone_gem.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/inorganic_stone_gem.txt), [inorganic_stone_mineral.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/inorganic_stone_mineral.txt)
+    *   `game/raw/objects/inorganic_metal.txt` (iron, steel, copper, adamantine)
+    *   `game/raw/objects/inorganic_stone_gem.txt`, `game/raw/objects/inorganic_stone_mineral.txt`
 *   **Key Modding Tags**:
     *   `[MELTING_POINT:...]`/`[BOILING_POINT:...]`: Controls phase changes. Low melting points allow weapons to melt in magma.
     *   `[SOLID_DENSITY:...]`: Determines the weight of items made from the material.
@@ -70,8 +70,8 @@ Defines the physical properties of metals, stone types, gems, and soil.
 ### 2.5. Plants & Vegetation (`plant_*.txt`)
 Defines subterranean and surface flora, crops, and trees.
 *   **Key Files**:
-    *   [plant_crops.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/plant_crops.txt) (Plump Helmets, Pig Tail, Cave Wheat)
-    *   [plant_standard.txt](file:///home/ekco/github/dwarffortress/game/raw/objects/plant_standard.txt) (surface crops and wild plants)
+    *   `game/raw/objects/plant_crops.txt` (Plump Helmets, Pig Tail, Cave Wheat)
+    *   `game/raw/objects/plant_standard.txt` (surface crops and wild plants)
 *   **Key Modding Tags**:
     *   `[GROWDUR:500]`: Controls the time it takes for a crop to grow. Lower values increase harvest frequency.
     *   `[USE_MATERIAL_TEMPLATE:STRUCTURAL:STRUCTURAL_PLANT_TEMPLATE]`: Determines edible components.
@@ -85,7 +85,7 @@ These configuration files define video, audio, rendering, controls, and active g
 
 ### 3.1. Gameplay Configuration (`d_init.txt`)
 Contains the primary simulation parameters.
-*   **Key File**: [d_init.txt](file:///home/ekco/github/dwarffortress/game/data/init/d_init.txt)
+*   **Key File**: `game/data/init/d_init.txt`
 *   **Key Settings (Knobs)**:
     *   `[POPULATION_CAP:200]`: Limits hard migrant arrivals.
     *   `[STRICT_POPULATION_CAP:220]`: Limits birth rates and visitor migration once reached.
@@ -100,7 +100,7 @@ Contains the primary simulation parameters.
 
 ### 3.2. Graphics, Audio & Controls (`init.txt`)
 Configures the graphics engine, sound, and windowing system.
-*   **Key File**: [init.txt](file:///home/ekco/github/dwarffortress/game/data/init/init.txt)
+*   **Key File**: `game/data/init/init.txt`
 *   **Key Settings (Knobs)**:
     *   `[SOUND:ON]`: Toggles game music and audio.
     *   `[PRINT_MODE:2D]`: Controls the renderer. **Leave this alone.** `TWBT` segfaults
@@ -113,14 +113,14 @@ Configures the graphics engine, sound, and windowing system.
 
 ### 3.3. Color Palette Configuration (`colors.txt`)
 Defines the RGB values for the 16 basic colors used in the console display.
-*   **Key File**: [colors.txt](file:///home/ekco/github/dwarffortress/game/data/init/colors.txt)
+*   **Key File**: `game/data/init/colors.txt`
 
 ---
 
 ## 4. DFHack Automation and Plugins (`game/dfhack.init`)
 
 DFHack injects custom code into the running executable to patch bugs, add overlay interfaces, and automate tedious chores.
-*   **Key File**: [dfhack.init](file:///home/ekco/github/dwarffortress/game/dfhack.init)
+*   **Key File**: `game/dfhack.init`
 *   **Tweakable Plugins & Commands**:
     *   `autobutcher`: Automates management of livestock populations.
     *   `fastdwarf`: Speeds up dwarves' work/walk rate (`fastdwarf 1 0` or `fastdwarf 1 1`).
@@ -152,7 +152,7 @@ To ensure seamless execution on modern Linux environments, the following custom 
 
 ### 6.1. OpenGL Symbol Conflict Fix
 *   **Problem**: The game crashed with a `symbol lookup error: libgraphics.so: undefined symbol: glXGetProcAddressARB` when run.
-*   **Solution**: Modified the launcher scripts [df](file:///home/ekco/github/dwarffortress/game/df) and [dfhack](file:///home/ekco/github/dwarffortress/game/dfhack) to explicitly preload `libGL.so.1` in the `LD_PRELOAD` path, ensuring the dynamic linker can resolve GLX symbols successfully.
+*   **Solution**: Modified the launcher scripts `game/df` and `game/dfhack` to explicitly preload `libGL.so.1` in the `LD_PRELOAD` path, ensuring the dynamic linker can resolve GLX symbols successfully.
 
 ### 6.2. Single-Buffering Warning Suppression
 *   **Problem**: OpenGL initialization warns that single-buffering is unavailable under modern X11 compositors, popping up three modal dialog boxes on startup and freezing/interrupting window resizing with subsequent dialogs.
@@ -160,7 +160,7 @@ To ensure seamless execution on modern Linux environments, the following custom 
 
 ### 6.3. Elevation Rejection Mitigation
 *   **Problem**: Mountainous custom presets (like `TOLKIEN_EPIC`) and island presets frequently failed generation due to `HIGH ELEVATION REJECTION` when the generator was unable to satisfy high minimum bounds for terrain elevations.
-*   **Solution**: Relaxed the minimum high-elevation constraints (`[ELEVATION_RANGES]`) in [world_gen.txt](file:///home/ekco/github/dwarffortress/game/data/init/world_gen.txt) and the LNP baseline:
+*   **Solution**: Relaxed the minimum high-elevation constraints (`[ELEVATION_RANGES]`) in `game/data/init/world_gen.txt` and the LNP baseline:
     *   `TOLKIEN_EPIC_LARGE`: Reduced high-elevation minimum squares from `21024` to `4000`.
     *   `TOLKIEN_EPIC_MEDIUM`: Reduced high-elevation minimum squares from `5320` to `1000`.
     *   Islands (Medium, Small, Smaller, Pocket): Reduced corresponding constraints to eliminate rejections while preserving the topographical layout.
@@ -187,7 +187,7 @@ graph TD
     Engine -- Automation Commands --> Client
 ```
 
-1.  **DFHack Lua Script ([antfarm_server.lua](file:///home/ekco/github/dwarffortress/game/hack/scripts/antfarm_server.lua))**:
+1.  **DFHack Lua Script (`game/hack/scripts/antfarm_server.lua`)**:
     *   Runs as a non-blocking background loop in DFHack (using `dfhack.timeout`).
     *   Periodically extracts the active or followed dwarf's detailed attributes, skills, current action, location, recent memories/emotions, and unsatisfied needs.
     *   Collects general fortress stats (FPS, season, year, population), the full citizen roster, and the last 5 active fortress announcements/status reports.
@@ -197,25 +197,25 @@ graph TD
         (The single `antfarm_cmd.json` file shown in the diagram above was protocol 1; it is still
         read for hand-written one-shots but cannot carry concurrent commands. See AGENTS.md 5.2.)
     *   Leverages the game's native tracking system by setting the global `df.global.ui.follow_unit` variable to keep the camera locked onto followed citizens smoothly.
-2.  **Python IPC Client ([client.py](file:///home/ekco/github/dwarffortress/antfarm/client.py))**:
+2.  **Python IPC Client (`antfarm/client.py`)**:
     *   Provides a clean, thread-safe wrapper that polls the atomic state file and writes commands to the command file.
     *   Decouples the Python runtime from game network code, eliminating standard TCP socket blockage and native crash risks.
-3.  **Event Engine & Event Bus ([event_engine.py](file:///home/ekco/github/dwarffortress/antfarm/event_engine.py))**:
+3.  **Event Engine & Event Bus (`antfarm/event_engine.py`)**:
     *   **Module 0 (Event Engine)**: Compares state changes between ticks and publishes structured events (`CitizenStartedJob`, `CitizenEnteredCombat`, `CitizenStressIncreased`, `CitizenDeath`, `FortressAnnouncement`) onto a unified wildcard-supporting `EventBus`.
-4.  **Antfarm Engine ([antfarm.py](file:///home/ekco/github/dwarffortress/antfarm/engine.py))**:
+4.  **Antfarm Engine (`antfarm/engine.py`)**:
     *   Launches a comprehensive DFHack automation suite on boot: `autolabor`, `prioritize`, `autobutcher`, `workflow`, `seedwatch`, `buildingplan`, `tailor`, `autofarm`, `autochop`, `autotrade`, `automelt`. Also configures recurring maintenance via `repeat` (clothing cleanup, order sorting, starvation warnings, stack consolidation).
     *   Controls camera rotation:
         *   `director` mode (Default): Runs as a nature documentary director, subscribing to the `EventBus` and calculating time-based exponentially decaying interest scores for each citizen ($interest(t) = \sum W_e \times 2^{-\Delta t / HL_e}$). Locks onto the most interesting target using a hysteresis threshold barrier of $H = 150$.
         *   `timed` mode: Cycles focus every 15 seconds through the top 5 highest interest-scoring citizens.
         *   `event` mode: Legacy mode that snaps camera focus to highly stressed citizens or dwarves in a strange mood.
         *   `idle` mode: Camera follow is disabled, letting the TUI track the user's manual in-game cursor.
-5.  **TUI Stream Dashboard ([tui.py](file:///home/ekco/github/dwarffortress/antfarm/tui.py))**:
+5.  **TUI Stream Dashboard (`antfarm/tui.py`)**:
     *   Built using `textual` to render a broadcast-grade HUD dashboard fit for Twitch streaming.
     *   Incorporates OBS safe padding, a dedicated horizontal Story Card, Director mode stats banner, stress sparkline graphs, and needs gauges.
     *   Cross-references historical figure IDs against `legends.db` (SQLite) to fetch nobility titles, birth dates, and family trees.
-6.  **Simulation Knowledge Graph ([knowledge_graph.py](file:///home/ekco/github/dwarffortress/antfarm/knowledge_graph.py))**:
+6.  **Simulation Knowledge Graph (`antfarm/knowledge_graph.py`)**:
     *   **Module 13 (Simulation Knowledge Graph)**: Maintains a live semantic graph representation of character relationships, items, and locations. Exposes a BFS shortest path finder to dynamically discover paths between characters and events.
-7.  **Plugin SDK ([sdk.py](file:///home/ekco/github/dwarffortress/antfarm/sdk.py))**:
+7.  **Plugin SDK (`antfarm/sdk.py`)**:
     *   **Module 24 (Plugin SDK)**: Exposes a base plugin structure and dynamic plugin manager to allow loading/unloading custom hooks and widgets at runtime.
 8.  **Self-Healing Camera Control**:
     *   The Lua server implements a 5-second heartbeat timeout. If no commands are received from the Python TUI for 5 seconds, the server automatically releases the camera lock (`df.global.ui.follow_unit = -1`), returning full manual camera control to the player. The Python engine sends periodic heartbeat pings to maintain the lock while active.
