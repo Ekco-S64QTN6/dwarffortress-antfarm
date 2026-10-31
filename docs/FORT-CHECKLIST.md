@@ -67,7 +67,7 @@ are cheap to fix and were being ignored for twenty of the build's twenty-two ste
 "Tools match the labour" is the one that is easy to miss: autolabor will happily
 assign four miners on an embark carrying two picks, and the surplus stand still.
 
-For manager-order stalls, run `./dfhack-run antfarm_orders audit` before
+For manager-order stalls, run `game/dfhack-run antfarm_orders audit` before
 changing the manager, office, order definitions or labour assignments. This is
 read-only and prints validation/activity counts plus stalled jobs and unmet
 items. DF 0.47 has crashed when writing `status.validated`/`status.active`;
