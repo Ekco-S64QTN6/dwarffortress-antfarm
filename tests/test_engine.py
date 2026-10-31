@@ -146,6 +146,30 @@ class ManagerOrderDiagnostics(unittest.TestCase):
         self.assertIsNone(format_manager_order_status(None))
 
 
+class QuartersContracts(unittest.TestCase):
+    def test_quarters_uses_the_vendored_workorder_reduction_and_result_contract(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        quarters_path = os.path.join(
+            root, "game", "hack", "scripts", "antfarm_quarters.lua"
+        )
+        workorder_path = os.path.join(
+            root, "game", "hack", "scripts", "workorder.lua"
+        )
+        with open(quarters_path, encoding="utf-8") as f:
+            quarters = f.read()
+        with open(workorder_path, encoding="utf-8") as f:
+            workorder = f.read()
+
+        self.assertIn('"__reduce_amount":true', quarters)
+        self.assertIn("local function order_quantity(order, quantity)", workorder)
+        self.assertIn("amount = amount - managed.amount_left", workorder)
+        self.assertIn("if orders_match(order, managed)", workorder)
+        self.assertIn("if amount <= 0 then", workorder)
+        self.assertIn("return -1", workorder)
+        self.assertIn("if ok and result == CR_OK then", quarters)
+        self.assertNotIn('"material":"INORGANIC"', quarters)
+
+
 class SubsystemHealth(unittest.TestCase):
     def test_all_reporters_healthy(self):
         line = format_subsystem_health({

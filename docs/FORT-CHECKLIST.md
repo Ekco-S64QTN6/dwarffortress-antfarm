@@ -47,13 +47,25 @@ Grouped, roughly in dependency order. `antfarm_checklist` reports each as
 | drink stock | ≥ 2 drinks per citizen | `antfarm_sustenance all` |
 | booze production | a still exists, plants on hand, brew orders queued | `antfarm_sustenance workshops` |
 | food stock | ≥ 2 edible items per citizen | `antfarm_sustenance all` |
-| a bed for everyone | beds ≥ citizens | `antfarm_quarters beds` |
+| a bed for everyone | beds ≥ citizens | `antfarm_quarters status`, then `antfarm_quarters orders` and `antfarm_quarters beds` as appropriate |
 | indoor meeting area | a meeting zone that is **not** outside | `antfarm_locations hall` |
 | plant gathering | a gathering zone with shrubs in it | `antfarm_sustenance gather` |
 
 Rain is a real stress source in 0.47, and an outdoor meeting area means the whole
 fort stands in it. Sleeping on the floor is a standing, cumulative penalty. Both
 are cheap to fix and were being ignored for twenty of the build's twenty-two steps.
+
+`antfarm_quarters orders` submits workshop manager-order targets; it does not
+produce finished items immediately. It uses the vendored DFHack 0.47
+`workorder.lua` `__reduce_amount` matcher, which subtracts equivalent open
+orders' `amount_left` from the requested target before creating any remaining
+quantity. The code reports a
+target as submitted only when `dfhack.run_command()` returns `CR_OK`.
+`antfarm_quarters beds` schedules bed construction only when a free, finished BED
+item exists. Logs are a carpentry input, not the finished bed consumed by the
+construction job. The result says "queued" rather than claiming that DF has
+completed the building. Check `antfarm_orders audit` if furniture orders are not
+issuing; do not edit the protected order status bits.
 
 ### Infrastructure
 

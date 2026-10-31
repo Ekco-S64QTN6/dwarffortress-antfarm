@@ -19,10 +19,9 @@
 
 --@module = true
 
--- Cap on how much furniture is queued or placed at once, so a fort with fifty
--- unhoused dwarves does not queue two hundred jobs and starve every other
--- industry of workers. Declared here because place_beds() uses it too, and it
--- was previously defined further down the file -- where it read as nil.
+-- Cap each furniture category at twenty per pass so a large housing shortfall
+-- does not flood every workshop queue at once. Declared here because bed
+-- construction uses the same cap.
 local MAX_BATCH = 20
 
 -- Per dwarf, a finished bedroom is a bed, a door, a chest and a cabinet.
@@ -127,18 +126,28 @@ local function fort_levels()
     return sum.anchor, zs
 end
 
--- Logs on hand; a bed needs one and nothing else.
-local function logs_available()
-    local n = 0
-    for _, it in ipairs(df.global.world.items.all) do
-        if it:getType() == df.item_type.WOOD then
-            local ok, free = pcall(function()
-                return not (it.flags.forbid or it.flags.in_job or it.flags.in_building)
+-- A building bed is made from a finished BED item at the carpenter's shop.
+-- Logs are inputs to that workshop job; they are not the item consumed by the
+-- build menu. Do not queue a building construction until a free finished bed
+-- item exists, or DF can cancel the job and discard the temporary building.
+local function available_items(item_type)
+    if item_type == nil then return nil, 'item type is unavailable in this DF build' end
+    local ok_items, items = pcall(function() return df.global.world.items.all end)
+    if not ok_items or not items then return nil, 'world item list is unavailable' end
+
+    local count = 0
+    for _, item in ipairs(items) do
+        local ok_type, kind = pcall(function() return item:getType() end)
+        if not ok_type then return nil, 'could not inspect an item type' end
+        if kind == item_type then
+            local ok_free, free = pcall(function()
+                return not (item.flags.forbid or item.flags.in_job or item.flags.in_building)
             end)
-            if ok and free then n = n + 1 end
+            if not ok_free then return nil, 'could not inspect item reservation flags' end
+            if free then count = count + 1 end
         end
     end
-    return n
+    return count
 end
 
 function place_beds()
@@ -148,8 +157,15 @@ function place_beds()
 
     local anchor, levels = fort_levels()
     if not anchor then return {}, 'no fort anchor yet' end
-    local budget = math.min(short, logs_available(), MAX_BATCH)
-    if budget == 0 then return {}, 'no free logs to build beds from' end
+    local free_beds, item_error = available_items(df.item_type.BED)
+    if free_beds == nil then
+        return {}, 'cannot safely inspect finished bed items: ' .. tostring(item_error)
+    end
+    local budget = math.min(short, free_beds, MAX_BATCH)
+    if budget == 0 then
+        return {}, ('%d citizens short; no free finished bed items (%d available)')
+            :format(short, free_beds)
+    end
 
     local placed = 0
     for _, z in ipairs(levels) do
@@ -179,8 +195,8 @@ function place_beds()
     if placed > 0 then
         pcall(dfhack.run_command, 'prioritize', '-a', 'ConstructBuilding')
     end
-    return {('placed %d bed(s) in dug rooms'):format(placed)},
-           ('%d citizens short, %d logs free'):format(short, logs_available())
+    return {('queued %d bed construction(s)'):format(placed)},
+           ('%d citizens short, %d free finished bed item(s)'):format(short, free_beds)
 end
 
 -- A bed only becomes a bedroom when it is *defined as a room*; an undefined bed
@@ -220,27 +236,49 @@ function assign_beds()
 end
 
 -- Queue the furniture the fort is short of.
-
+--
+-- DFHack 0.47's workorder tool supports __reduce_amount. It matches existing
+-- open orders and subtracts their amount_left from the desired target before
+-- creating any remainder. Use the native matcher rather than
+-- counting every order of the same job type: a differently constrained order
+-- must not be mistaken for this furniture request.
 function queue_furniture()
     local h = housing()
     local short = math.max(0, h.citizens - h.beds)
-    if short == 0 then return {}, 'every citizen has a bed' end
-    local batch = math.min(short, MAX_BATCH)
-    local queued = {}
+    local submitted, skipped = {}, {}
     for _, item in ipairs(PER_ROOM) do
         local have = ({
             beds = h.beds, doors = h.doors, chests = h.chests, cabinets = h.cabinets,
         })[item.name] or 0
-        local want = math.max(0, math.min(batch, h.citizens - have))
-        if want > 0 then
-            local ok = pcall(dfhack.run_command, 'workorder',
-                ('{"job":"%s","amount_total":%d,"material":"INORGANIC"}'):format(item.job, want))
-            if ok then
-                table.insert(queued, ('%d %s'):format(want, item.name))
+        -- Each furniture type has its own shortfall. Do not stop queueing
+        -- doors/chests/cabinets just because bed count has caught up.
+        local target = math.max(0, math.min(MAX_BATCH, h.citizens - have))
+        if target > 0 then
+            -- Omit "material": DFHack 0.47's workorder parser defaults to any
+            -- material when the field is absent. "INORGANIC" is not a concrete
+            -- matinfo id. __reduce_amount makes this a desired outstanding
+            -- amount, not an additive batch.
+            local json = ('{"job":"%s","amount_total":%d,"__reduce_amount":true}')
+                :format(item.job, target)
+            local ok, result = pcall(dfhack.run_command, 'workorder', json)
+            if ok and result == CR_OK then
+                table.insert(submitted, ('%d %s target'):format(target, item.name))
+            else
+                local reason = ok and ('command result ' .. tostring(result))
+                    or tostring(result)
+                table.insert(skipped, ('%s (workorder command failed: %s)')
+                    :format(item.name, reason))
             end
         end
     end
-    return queued, ('%d citizens without a bed'):format(short)
+
+    local detail = short > 0
+        and ('%d citizens without a bed'):format(short)
+        or 'all citizens have beds; checking accessory furniture separately'
+    if #skipped > 0 then
+        detail = detail .. '; skipped safely: ' .. table.concat(skipped, ', ')
+    end
+    return submitted, detail
 end
 
 -- ---------------------------------------------------------------- --
@@ -255,20 +293,42 @@ function tick()
     local now = (dfhack.getTickCount() or 0) / 1000
     if now - antfarm_quarters_state.last_run < RUN_INTERVAL_SEC then return end
     antfarm_quarters_state.last_run = now
-    -- Place first, then assign: assigning is a no-op while there are no beds.
-    local okp, made = pcall(place_beds)
-    if okp and type(made) == 'table' then
-        for _, m in ipairs(made) do
-            table.insert(antfarm_quarters_state.notes, 1, m)
-        end
+    -- Queue the workshop orders first; they produce the finished furniture
+    -- items that the building menu consumes. Assign only the beds that existed
+    -- at the start of this pass, then queue constructions from free BED items.
+    local okq, submitted, queue_detail = pcall(queue_furniture)
+    if not okq then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'furniture order submission failed: ' .. tostring(submitted))
+    elseif type(submitted) == 'table' and #submitted > 0 then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'submitted furniture order targets: ' .. table.concat(submitted, ', '))
     end
+    if okq and type(queue_detail) == 'string'
+            and queue_detail:find('skipped safely:', 1, true) then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'furniture order warning: ' .. queue_detail)
+    end
+
     local ok, done = pcall(assign_beds)
-    if ok then
+    if ok and type(done) == 'table' then
         for _, msg in ipairs(done) do
             table.insert(antfarm_quarters_state.notes, 1, msg)
         end
+    elseif not ok then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'bed assignment failed: ' .. tostring(done))
     end
-    pcall(queue_furniture)
+
+    local okp, made = pcall(place_beds)
+    if okp and type(made) == 'table' then
+        for _, msg in ipairs(made) do
+            table.insert(antfarm_quarters_state.notes, 1, msg)
+        end
+    elseif not okp then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'bed construction scheduling failed: ' .. tostring(made))
+    end
     while #antfarm_quarters_state.notes > 10 do table.remove(antfarm_quarters_state.notes) end
 end
 
@@ -303,10 +363,10 @@ elseif verb == 'beds' then
     print('antfarm_quarters: ' .. tostring(why))
     for _, m in ipairs(made) do print('antfarm_quarters: ' .. m) end
 elseif verb == 'orders' then
-    local queued, why = queue_furniture()
+    local submitted, why = queue_furniture()
     print('antfarm_quarters: ' .. tostring(why))
-    if #queued > 0 then
-        print('antfarm_quarters: queued ' .. table.concat(queued, ', '))
+    if #submitted > 0 then
+        print('antfarm_quarters: submitted order targets ' .. table.concat(submitted, ', '))
     end
 else
     local h = housing()
