@@ -23,6 +23,16 @@ antfarm_list_saved_regions() {
         if [ -f "$directory/world.sav" ]; then
             printf 'fort|%s\n' "$region"
         elif [ -f "$directory/world.dat" ]; then
+            local -a candidates=()
+            while IFS= read -r candidate; do
+                [ -n "$candidate" ] && candidates+=("$candidate")
+            done < <(antfarm_list_saved_regions "$save_root")
+            if [ "${#candidates[@]}" -gt 1 ]; then
+                printf 'ANTFARM_REGION=%s is a generated world, but multiple worlds are on disk.\n' "$region" >&2
+                printf 'The launcher cannot select an entry in DFHack title-screen start_savegames yet.\n' >&2
+                printf 'Choose the generated world manually from Start Playing, or select a fortress with ANTFARM_REGION.\n' >&2
+                return 2
+            fi
             printf 'world|%s\n' "$region"
         fi
     done
@@ -30,7 +40,7 @@ antfarm_list_saved_regions() {
 
 antfarm_resolve_save() {
     local save_root="$1"
-    local region directory
+    local region directory candidate
     local -a candidates=()
 
     if [ -n "${ANTFARM_REGION:-}" ]; then
