@@ -498,11 +498,10 @@ class ChatDispatch(unittest.TestCase):
             self.assertTrue(self.bridge._cooldown_ok("VIEWER"))
 
     def test_user_cooldown_registry_prunes_expired_logins(self):
-        from collections import OrderedDict
-        self.bridge._user_last_cmd = OrderedDict([
-            ("expired", 10.0),
-            ("recent", 95.0),
-        ])
+        self.bridge._user_last_cmd = {
+            "expired": 10.0,
+            "recent": 95.0,
+        }
         self.bridge._next_user_cooldown_prune = 0.0
         with mock.patch("antfarm.twitch.time.monotonic", return_value=100.0):
             self.assertTrue(self.bridge._cooldown_ok("new"))
@@ -517,7 +516,20 @@ class ChatDispatch(unittest.TestCase):
         self.assertEqual(
             len(self.bridge._user_last_cmd), MAX_USER_COOLDOWN_ENTRIES
         )
-        self.assertNotIn("viewer-0", self.bridge._user_last_cmd)
+        self.assertIn("viewer-0", self.bridge._user_last_cmd)
+        self.assertFalse(self.bridge._cooldown_ok("viewer-0"))
+
+    def test_a_full_cooldown_registry_rejects_new_logins_until_slots_expire(self):
+        from antfarm.twitch import MAX_USER_COOLDOWN_ENTRIES
+        with mock.patch("antfarm.twitch.time.monotonic", return_value=100.0):
+            for i in range(MAX_USER_COOLDOWN_ENTRIES):
+                self.assertTrue(self.bridge._cooldown_ok(f"viewer-{i}"))
+            self.assertFalse(self.bridge._cooldown_ok("overflow"))
+            self.assertIn("viewer-0", self.bridge._user_last_cmd)
+
+        with mock.patch("antfarm.twitch.time.monotonic", return_value=108.1):
+            self.assertTrue(self.bridge._cooldown_ok("overflow"))
+        self.assertEqual(list(self.bridge._user_last_cmd), ["overflow"])
 
     def test_a_mod_only_command_does_not_burn_a_viewer_cooldown(self):
         """F-03: !director charged the cooldown then silently did nothing."""
