@@ -399,19 +399,6 @@ class HeaderWidget(Static):
                            f"{'  |  ' + last[:70] if last else ''}[/]")
             stats_line += f"\n{ui_line}"
 
-        orders = (subsystems or {}).get("orders")
-        if isinstance(orders, dict) and (
-            orders.get("unvalidated", 0) > 0
-            or orders.get("validation_unknown", 0) > 0
-        ):
-            stats_line += (
-                f"\n[bold #FFC857]MANAGER ORDERS:[/] "
-                f"{orders.get('total', 0)} total; "
-                f"{orders.get('validated', 0)} validated; "
-                f"{orders.get('unvalidated', 0)} not validated; "
-                f"{orders.get('validation_unknown', 0)} unknown"
-            )
-
         orders_line = format_manager_order_status((subsystems or {}).get("orders"))
         if orders_line:
             stats_line += f"\n{orders_line}"
