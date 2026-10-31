@@ -19,10 +19,9 @@
 
 --@module = true
 
--- Cap on how much furniture is queued or placed at once, so a fort with fifty
--- unhoused dwarves does not queue two hundred jobs and starve every other
--- industry of workers. Declared here because place_beds() uses it too, and it
--- was previously defined further down the file -- where it read as nil.
+-- Cap each furniture category at twenty per pass so a large housing shortfall
+-- does not flood every workshop queue at once. Declared here because bed
+-- construction uses the same cap.
 local MAX_BATCH = 20
 
 -- Per dwarf, a finished bedroom is a bed, a door, a chest and a cabinet.
@@ -298,7 +297,10 @@ function tick()
     -- items that the building menu consumes. Assign only the beds that existed
     -- at the start of this pass, then queue constructions from free BED items.
     local okq, submitted, queue_detail = pcall(queue_furniture)
-    if okq and type(submitted) == 'table' and #submitted > 0 then
+    if not okq then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'furniture order submission failed: ' .. tostring(submitted))
+    elseif type(submitted) == 'table' and #submitted > 0 then
         table.insert(antfarm_quarters_state.notes, 1,
             'submitted furniture order targets: ' .. table.concat(submitted, ', '))
     end
@@ -309,10 +311,13 @@ function tick()
     end
 
     local ok, done = pcall(assign_beds)
-    if ok then
+    if ok and type(done) == 'table' then
         for _, msg in ipairs(done) do
             table.insert(antfarm_quarters_state.notes, 1, msg)
         end
+    elseif not ok then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'bed assignment failed: ' .. tostring(done))
     end
 
     local okp, made = pcall(place_beds)
@@ -320,6 +325,9 @@ function tick()
         for _, msg in ipairs(made) do
             table.insert(antfarm_quarters_state.notes, 1, msg)
         end
+    elseif not okp then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'bed construction scheduling failed: ' .. tostring(made))
     end
     while #antfarm_quarters_state.notes > 10 do table.remove(antfarm_quarters_state.notes) end
 end
