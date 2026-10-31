@@ -187,6 +187,53 @@ do
           and jobs.ConstructCabinet == 3 and jobs.ConstructBed == nil)
 end
 
+-- The timer pass must enqueue production targets before scheduling any
+-- construction jobs that consume the finished furniture items.
+do
+    local w, env = fresh(2)
+    local events = {}
+    local block = floor_block(w)
+    w.dfhack.getTickCount = function() return 600001 end
+    w.dfhack.maps.getTileBlock = function() return block end
+    w.dfhack.buildings = {
+        findAtTile = function() return nil end,
+        constructBuilding = function(spec)
+            events[#events + 1] = 'constructBuilding'
+            return {}
+        end,
+    }
+    w.dfhack.run_command = function(command)
+        events[#events + 1] = command
+        return 0
+    end
+    w.scripts = {
+        antfarm_blueprint = {
+            plan_summary = function()
+                return {anchor = {x = 8, y = 8}, levels = {farming = 10}}
+            end,
+        },
+    }
+    env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+    w.df.global.world.items.all:push({
+        getType = function() return w.df.item_type.BED end,
+        flags = {forbid = false, in_job = false, in_building = false},
+    })
+
+    env.tick()
+    local last_workorder, first_construction = 0, nil
+    for i, event in ipairs(events) do
+        if event == 'workorder' then last_workorder = i end
+        if event == 'constructBuilding' and not first_construction then
+            first_construction = i
+        end
+    end
+    check('all furniture workorders are submitted before bed construction',
+          last_workorder == 4 and first_construction ~= nil
+          and first_construction > last_workorder,
+          ('last workorder=%d first construction=%s'):format(
+              last_workorder, tostring(first_construction)))
+end
+
 -- A log is a workshop input, not the finished bed item consumed by the build
 -- menu. The placer must do nothing until a free BED item exists.
 do
