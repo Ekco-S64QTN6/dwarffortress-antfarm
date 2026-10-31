@@ -420,9 +420,10 @@ folder containing the exact manually-created `.antfarm-disposable-save` marker
 and both `--confirm-disposable` and `--confirm-loaded-save`. It invokes only
 `antfarm_live_smoke.lua`, which calls the read-only `antfarm_orders.audit()`,
 `antfarm_quarters.report()`, and `antfarm_checklist.report()` entrypoints.
-The report is written under the DF installation root, not in the save. See
-`docs/LIVE-SMOKE.md`. The runner cannot establish the loaded save-folder name;
-the loaded-save flag is an operator attestation. Do not add this live path to
+The report is written under the DF installation root, not in the save. The Lua
+probe compares `dfhack.getSavePath()` with the selected region and the Python
+runner rejects a mismatch; the flag remains an additional operator attestation.
+See `docs/LIVE-SMOKE.md`. Do not add this live path to
 `tests/run_all.sh` or CI.
 
 ---
