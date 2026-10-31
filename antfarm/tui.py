@@ -168,11 +168,27 @@ def format_manager_order_status(orders):
     if unvalidated == 0 and unknown == 0:
         return None
 
-    return (
-        f"[bold #FFC857]MANAGER ORDERS:[/] "
+    details = (
         f"{count('total')} total; {count('validated')} validated; "
         f"{unvalidated} not validated; {unknown} status unknown"
     )
+    office = orders.get("manager_office")
+    if isinstance(office, dict):
+        status = office.get("status")
+        citizens = count("total")  # keep all displayed counts numeric
+        office_citizens = office.get("citizens")
+        if status == "missing":
+            suffix = (
+                f"; manager office missing at {office_citizens} citizens"
+                if type(office_citizens) is int and office_citizens >= 0
+                else "; manager office missing"
+            )
+            details += suffix
+        elif status == "manager_missing":
+            details += "; manager position vacant"
+        elif status == "unknown":
+            details += "; manager office status unknown"
+    return f"[bold #FFC857]MANAGER ORDERS:[/] {details}"
 
 
 def render_progress_bar(value, max_value, width=15, color="cyan"):
