@@ -17,6 +17,9 @@ reading before touching any Lua. This file is the orientation; that one is the m
 ./start_antfarm.sh --menu           # the individual pieces
 ./start_antfarm.sh --status         # what is running right now
 
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+
 lua tests/test_antfarm_ui.lua       # one Lua suite
 .venv/bin/python -m tests.test_engine                       # one Python suite
 .venv/bin/python -m unittest tests.test_engine -k probe     # filter within a suite
@@ -26,8 +29,9 @@ luac -p game/hack/scripts/antfarm_ui.lua                    # Lua syntax only
 .venv/bin/python -m compileall -q antfarm/                  # Python syntax only
 ```
 
-The venv carries only `textual` and `rich` — no test framework, no linter. Tests are plain
-`unittest` and hand-rolled Lua assertions. Keep it that way; the stream box should not need more.
+The runtime imports only `textual` and `rich` directly. `requirements.txt` pins them and the
+resolved transitive packages for Python 3.12 so the launcher and CI use the same environment.
+Tests are plain `unittest` and hand-rolled Lua assertions; no test framework or linter is needed.
 
 ### Driving a live fortress
 
@@ -126,6 +130,13 @@ Three invariants:
 one, open the dashboard, and begin playing. The shell decides only *what* is on
 disk (`world.sav` = a fort to continue, `world.dat` alone = a world needing an
 embark); `antfarm_autostart` drives the screens.
+
+The launcher never chooses the first filesystem glob match when multiple save
+regions exist. It fails closed. Set `ANTFARM_REGION=regionN` to choose an
+existing fortress explicitly through `+load-save`. A generated `world.dat`
+among multiple candidates still requires manual selection from DF's **Start
+Playing** list: DFHack's `load-save` does not load inactive worlds, and the
+current title-screen driver does not select that list by folder name.
 
 It is a screen-driven stepper, not a fixed script: each poll looks at what is on
 screen and does the one thing that screen needs, so an unbounded wait (DF

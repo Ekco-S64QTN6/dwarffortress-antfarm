@@ -10,6 +10,7 @@ happily execute commands a test writes into the real spool -- AGENTS.md section
 
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -29,6 +30,49 @@ from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
 from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
                             TwitchBridge)                    # noqa: E402
+
+
+class DreamfortCatalogue(unittest.TestCase):
+    """Keep the guided Lua checklist aligned with the vendored Quickfort CSV."""
+
+    def test_every_guided_build_step_has_a_real_dreamfort_label(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        lua_path = os.path.join(
+            root, "game", "hack", "scripts", "antfarm_blueprint.lua"
+        )
+        csv_path = os.path.join(
+            root, "game", "blueprints", "library", "dreamfort.csv"
+        )
+        with open(lua_path, encoding="utf-8") as f:
+            lua = f.read()
+        with open(csv_path, encoding="utf-8") as f:
+            catalogue = f.read()
+
+        plan = re.search(
+            r"(?ms)^local PLAN = \{(.*?)^\}",
+            lua,
+        )
+        self.assertIsNotNone(plan, "could not locate the Lua build PLAN table")
+        steps = re.findall(
+            r"\bbp\s*=\s*['\"](/[^'\"]+)['\"]",
+            plan.group(1),
+        )
+        self.assertEqual(len(steps), 22, "update the expected Dreamfort plan size deliberately")
+        self.assertEqual(len(steps), len(set(steps)), "build plan contains duplicate labels")
+
+        # Quickfort labels belong to different categories (#meta, #config,
+        #dig, #build, #place, #zone, #query). Exclude #notes, which labels
+        # walkthrough documentation rather than executable blueprints.
+        labels = set(re.findall(
+            r"#(?!notes\b)[A-Za-z0-9_-]+\s+label\(([^)]+)\)",
+            catalogue,
+        ))
+        missing = sorted({step.lstrip("/") for step in steps} - labels)
+        self.assertEqual(
+            missing, [],
+            "PLAN references labels absent from dreamfort.csv",
+        )
+        self.assertTrue({"/setup", "/dig_all", "/central_stairs"}.issubset(steps))
 
 
 class ClientProtocol(unittest.TestCase):
@@ -513,11 +557,11 @@ class ChatDispatch(unittest.TestCase):
         with mock.patch("antfarm.twitch.time.monotonic", return_value=100.0):
             for i in range(MAX_USER_COOLDOWN_ENTRIES + 100):
                 self.bridge._cooldown_ok(f"viewer-{i}")
-        self.assertEqual(
-            len(self.bridge._user_last_cmd), MAX_USER_COOLDOWN_ENTRIES
-        )
-        self.assertIn("viewer-0", self.bridge._user_last_cmd)
-        self.assertFalse(self.bridge._cooldown_ok("viewer-0"))
+            self.assertEqual(
+                len(self.bridge._user_last_cmd), MAX_USER_COOLDOWN_ENTRIES
+            )
+            self.assertIn("viewer-0", self.bridge._user_last_cmd)
+            self.assertFalse(self.bridge._cooldown_ok("viewer-0"))
 
     def test_a_full_cooldown_registry_rejects_new_logins_until_slots_expire(self):
         from antfarm.twitch import MAX_USER_COOLDOWN_ENTRIES
