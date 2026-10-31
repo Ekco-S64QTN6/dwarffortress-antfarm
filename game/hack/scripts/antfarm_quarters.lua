@@ -280,7 +280,7 @@ function queue_furniture()
     local short = math.max(0, h.citizens - h.beds)
     if short == 0 then return {}, 'every citizen has a bed' end
     local batch = math.min(short, MAX_BATCH)
-    local queued = {}
+    local queued, skipped = {}, {}
     for _, item in ipairs(PER_ROOM) do
         local have = ({
             beds = h.beds, doors = h.doors, chests = h.chests, cabinets = h.cabinets,
@@ -288,7 +288,7 @@ function queue_furniture()
         local target = math.max(0, math.min(batch, h.citizens - have))
         local pending, pending_error = pending_order_amount(item.job)
         if pending == nil then
-            table.insert(queued, ('skipped %s (cannot safely inspect pending orders: %s)')
+            table.insert(skipped, ('%s (cannot safely inspect pending orders: %s)')
                 :format(item.name, tostring(pending_error)))
         else
             local want = math.max(0, target - pending)
@@ -305,7 +305,11 @@ function queue_furniture()
             end
         end
     end
-    return queued, ('%d citizens without a bed'):format(short)
+    local detail = ('%d citizens without a bed'):format(short)
+    if #skipped > 0 then
+        detail = detail .. '; skipped safely: ' .. table.concat(skipped, ', ')
+    end
+    return queued, detail
 end
 
 -- ---------------------------------------------------------------- --
@@ -323,10 +327,15 @@ function tick()
     -- Queue the workshop orders first; they produce the finished furniture
     -- items that the building menu consumes. Assign only the beds that existed
     -- at the start of this pass, then queue constructions from free BED items.
-    local okq, queued = pcall(queue_furniture)
+    local okq, queued, queue_detail = pcall(queue_furniture)
     if okq and type(queued) == 'table' and #queued > 0 then
         table.insert(antfarm_quarters_state.notes, 1,
             'queued furniture orders: ' .. table.concat(queued, ', '))
+    end
+    if okq and type(queue_detail) == 'string'
+            and queue_detail:find('skipped safely:', 1, true) then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'furniture order warning: ' .. queue_detail)
     end
 
     local ok, done = pcall(assign_beds)
