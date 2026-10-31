@@ -125,6 +125,7 @@ def validate_target(
 def run_smoke(
     df_dir: Path,
     runner: Path,
+    region: str,
     timeout_seconds: int,
 ) -> tuple[dict[str, str], Path]:
     run_id = uuid.uuid4().hex
@@ -132,7 +133,7 @@ def run_smoke(
     if report_path.exists():
         raise SmokeError("unexpected report-path collision; refusing to overwrite")
 
-    command = [str(runner), "antfarm_live_smoke", run_id]
+    command = [str(runner), "antfarm_live_smoke", run_id, region]
     try:
         completed = subprocess.run(
             command,
@@ -165,6 +166,12 @@ def run_smoke(
             "DFHack answered, but no fortress map is loaded. Load the marked "
             "disposable fortress before running this read-only probe."
         )
+    if values.get("loaded_save_matches") != "true":
+        actual = values.get("loaded_save_folder", "unknown")
+        raise SmokeError(
+            f"the game reports loaded save folder {actual!r}, not the selected "
+            f"disposable region {region!r}; refusing to accept this run"
+        )
     return values, report_path
 
 
@@ -173,6 +180,8 @@ def print_summary(values: dict[str, str], report_path: Path) -> None:
     fields = (
         "df_version",
         "dfhack_version",
+        "loaded_save_folder",
+        "loaded_save_matches",
         "game_year",
         "game_paused",
         "citizens",
@@ -251,7 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.confirm_disposable,
             args.confirm_loaded_save,
         )
-        values, report_path = run_smoke(df_dir, runner, args.timeout)
+        values, report_path = run_smoke(df_dir, runner, args.region, args.timeout)
     except SmokeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
