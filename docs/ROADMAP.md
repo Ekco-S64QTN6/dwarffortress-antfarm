@@ -1,8 +1,9 @@
 # Remaining work
 
-Updated 2026-10-04 after a session spent running a fort end to end. See
+Updated 2026-10-31 after the repository review and reliability work. See
 [`FORT-CHECKLIST.md`](FORT-CHECKLIST.md) for what a fort needs and how to check it
-with one command.
+with one command, and [`REVIEW-2026-10-31.md`](REVIEW-2026-10-31.md) for the
+finding-by-finding review of the earlier report.
 
 ---
 
@@ -62,6 +63,16 @@ with one command.
 7. **`Parse error: param job df.job`** appears during quickfort's startup config
    read. It is upstream quickfort, not ours, and appears harmless — but it has not
    been traced.
+
+### Cross-cutting hardening completed 2026-10-31
+
+| Thing | Evidence |
+| :-- | :-- |
+| **Automated offline test gate** | `.github/workflows/tests.yml` runs `./tests/run_all.sh` on pushes and pull requests; the first workflow run passed |
+| **Twitch claim write failures** | `ClaimRegistry` now rolls back in-memory mutations on disk-write failure; failed `!unclaim` leaves the dwarf nickname intact; regression tests pass in CI |
+
+These are code/CI checks, not live-fort verification. The military squad-creation
+path and the other items in §2 remain subject to their stated live-game checks.
 
 ---
 
