@@ -33,7 +33,10 @@ assert_eq "fort|region2" "$(antfarm_resolve_save "$saves")" "single fortress"
 mkdir -p "$saves/region1"
 : > "$saves/region1/world.dat"
 assert_eq "fort|region2" "$(ANTFARM_REGION=region2 antfarm_resolve_save "$saves")" "explicit fort"
-assert_eq "world|region1" "$(ANTFARM_REGION=region1 antfarm_resolve_save "$saves")" "explicit world"
+if output="$(ANTFARM_REGION=region1 antfarm_resolve_save "$saves" 2>&1)"; then
+    fail "explicit generated-world selection among multiple saves unexpectedly succeeded: $output"
+fi
+[[ "$output" == *"Start Playing"* ]] || fail "world selection limitation was not explained: $output"
 
 # With multiple candidates, never depend on glob order or silently pick the
 # first fortress ahead of a generated world.
