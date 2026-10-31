@@ -18,6 +18,37 @@ local function check(name, ok, detail)
     end
 end
 
+local function office_fixture(population, manager_histfig, chair_owner)
+    local w = stub.new()
+    w.scripts = {
+        antfarm_nobles = {
+            positions = function()
+                return {MANAGER = {histfig = manager_histfig}}
+            end,
+        },
+    }
+    w.df.building_type = {Chair = 99}
+    w.df.historical_figure = {
+        find = function(id)
+            if id ~= manager_histfig then return nil end
+            return {unit_id = 1}
+        end,
+    }
+    for i = 1, population do
+        w.add_citizen(i, 1, 1, 1)
+    end
+    w.df.global.world.buildings = {all = {}}
+    if chair_owner ~= nil then
+        table.insert(w.df.global.world.buildings.all, {
+            owner_id = chair_owner,
+            is_room = true,
+            getType = function() return 99 end,
+        })
+    end
+    local env = stub.load(w, ORDERS)
+    return env.audit().manager_office
+end
+
 local function read_only_status(values, unreadable)
     local writes = {count = 0}
     local status = setmetatable({}, {
@@ -93,6 +124,8 @@ do
               c.active, c.inactive, c.activity_unknown))
     check('audit includes stalled-job and unmet-input counts',
           c.stalled_jobs == 0 and c.unmet_requirements == 0)
+    check('office is not required before 20 citizens',
+          result.manager_office.status == 'not_required')
 end
 
 do
@@ -102,6 +135,17 @@ do
           and r.validation_unknown == 1)
     check('report exports active-state counts',
           r.active == 2 and r.inactive == 1 and r.activity_unknown == 0)
+end
+
+do
+    check('manager office is required at 20 citizens',
+          office_fixture(19, -1, nil).status == 'not_required')
+    check('missing manager assignment is reported separately',
+          office_fixture(20, -1, nil).status == 'manager_missing')
+    check('missing manager chair-room is detected',
+          office_fixture(20, 500, nil).status == 'missing')
+    check('manager-owned chair-room satisfies the office check',
+          office_fixture(20, 500, 1).status == 'present')
 end
 
 do
