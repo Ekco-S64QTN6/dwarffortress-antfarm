@@ -17,7 +17,7 @@ for f in game/hack/scripts/antfarm_*.lua game/hack/scripts/fix/*.lua game/hack/s
 done
 
 step "Python syntax"
-if .venv/bin/python -m compileall -q antfarm/ tests/; then echo "  ok"; else fail=1; fi
+if .venv/bin/python -m compileall -q antfarm/ tests/ tools/; then echo "  ok"; else fail=1; fi
 
 step "Shell syntax"
 for f in start_antfarm.sh tools/*.sh tools/lib/*.sh tests/*.sh; do
@@ -35,6 +35,7 @@ done
 step "Python unit tests"
 .venv/bin/python -m tests.test_engine || fail=1
 .venv/bin/python -m tests.test_wire || fail=1
+.venv/bin/python -m tests.test_live_smoke || fail=1
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "SOME CHECKS FAILED"; fi
