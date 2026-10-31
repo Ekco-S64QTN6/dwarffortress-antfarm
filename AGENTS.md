@@ -228,15 +228,16 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | `command <dfhack_cmd>` | Run any DFHack console command. |
 | `stop` | Shut the bridge down and release the camera. |
 
-**Quarters invariant:** DFHack 0.47's `workorder` command treats an omitted
-material as "any material"; a generic category word such as `INORGANIC` is not a
-complete matinfo identifier. Do not add that category as the order's explicit
-`material`. The quarters loop subtracts outstanding matching manager-order
-`amount_left` before queuing, so repeated 10-minute ticks do not multiply the
-same order backlog. `constructBuilding` queues an in-game construction job; it
-does not mean the building is already complete. For beds, only a free finished
-`BED` item satisfies the precondition. Logs are inputs to the carpenter's job,
-not substitutes for that finished item.
+**Quarters invariants:** DFHack 0.47's `workorder` command defaults to any
+material when the JSON omits `material`; a generic category word such as
+`INORGANIC` is not a concrete matinfo identifier. Do not add that category as the
+order's explicit `material`. Use the vendored workorder script's
+`__reduce_amount`: its matcher subtracts equivalent open orders' `amount_left`
+before creating any remaining quantity. Count a target as submitted only when
+`dfhack.run_command()` returns `CR_OK`. `constructBuilding` queues an in-game
+construction job; it does not mean the building is already complete. For beds,
+only a free finished `BED` item satisfies the precondition. Logs are inputs to the
+carpenter's job, not substitutes for that finished item.
 
 ### 5.4. Heartbeat safety
 The server releases the camera lock (`df.global.ui.follow_unit = -1`) and drops to `idle` if no command arrives for 5 seconds, so a crashed client always returns control to the player. Clients must send `ping` or `mode` about once a second.
