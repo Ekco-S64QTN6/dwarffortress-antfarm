@@ -21,9 +21,9 @@ antfarm_list_saved_regions() {
         [[ "$region" =~ ^[A-Za-z0-9_-]+$ ]] || continue
 
         if [ -f "$directory/world.sav" ]; then
-            printf '%s|fort\n' "$region"
+            printf 'fort|%s\n' "$region"
         elif [ -f "$directory/world.dat" ]; then
-            printf '%s|world\n' "$region"
+            printf 'world|%s\n' "$region"
         fi
     done
 }
