@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-game-suite:
+    name: Lua and Python checks (no game required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Lua 5.3
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.3
+          sudo ln --symbolic --force "$(command -v lua5.3)" /usr/local/bin/lua
+          sudo ln --symbolic --force "$(command -v luac5.3)" /usr/local/bin/luac
+          lua -v
+          luac -v
+
+      - name: Install the runtime dependencies used by the TUI
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install textual rich
+
+      - name: Run the repository test suite
+        run: ./tests/run_all.sh
