@@ -37,12 +37,13 @@ All of the following are required before the wrapper will invoke DFHack:
    be executable, and the Lua diagnostic must be installed in that DFHack
    scripts folder.
 
-The wrapper cannot independently prove which save is currently loaded in the
-game process. The second confirmation is therefore an operator attestation, not
-an automatic loaded-region comparison. Check the title screen / loaded fortress
-carefully before invoking it. Even with a mistaken attestation, the probe only
-reads the currently loaded map and writes its report under the DF installation
-directory; it does not mutate the save.
+The Lua probe also calls DFHack 0.47.05's documented `dfhack.getSavePath()`
+and compares the currently loaded save directory with the selected
+`data/save/<region>` folder. If the API is unavailable, no save is loaded, or
+the path identifies another region, the Python wrapper refuses to accept the
+report. The `--confirm-loaded-save` flag is still required as a separate human
+attestation. See the [DFHack 0.47.05-r7 Lua API](https://docs.dfhack.org/en/0.47.05-r7/docs/Lua%20API.html)
+for `getSavePath()` (current save directory or nil when no save is loaded).
 
 ## Procedure
 
