@@ -294,9 +294,9 @@ function queue_furniture()
             local want = math.max(0, target - pending)
             if want > 0 then
                 -- Omit "material": DFHack 0.47's workorder parser expects a
-            -- complete material id (e.g. INORGANIC:IRON), not the category
-            -- token "INORGANIC". With no material field it deliberately lets
-            -- the workshop choose a valid material for this furniture job.
+                -- complete material id (e.g. INORGANIC:IRON), not the category
+                -- token "INORGANIC". With no material field it deliberately lets
+                -- the workshop choose a valid material for this furniture job.
                 local ok = pcall(dfhack.run_command, 'workorder',
                     ('{"job":"%s","amount_total":%d}'):format(item.job, want))
                 if ok then
