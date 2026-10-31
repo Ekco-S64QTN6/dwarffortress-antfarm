@@ -26,23 +26,22 @@ finding-by-finding review of the earlier report.
 | **Dwarves in the rain** | `antfarm_locations` now takes a bare dug indoor room as a meeting area when there is no dining furniture yet |
 | **The fort checklist** | `antfarm_checklist.lua`: 19 read-only checks in five groups. First run found 2 critical failures and 4 gaps that had been invisible |
 
-### Found and not yet fixed
+### Known gaps and live-validation work
 
-1. **Furniture-order / bed-placement safety — implementation in PR #14; CI
-   pending, not live-fort verified.** `antfarm_quarters` now omits the invalid
-   category token `"material":"INORGANIC"` from workorder JSON, so DFHack 0.47's
-   workorder tool can select any valid material. It submits the native
-   `__reduce_amount` option; the vendored `workorder.lua` matches equivalent open
-   orders and subtracts their `amount_left` from the requested target before
-   creating only any remainder.
-   A target is reported as submitted only when `dfhack.run_command()` returns
-   `CR_OK`. Bed construction is
-   now attempted only when a free, finished `df.item_type.BED` exists; logs alone
-   are not treated as a finished bed. Status text says "queued" rather than
-   claiming a bed was placed. Offline regression tests cover valid JSON,
-   deduplication, reserved/forbidden items, and the no-finished-bed case.
-   The actual manager validation/production chain and completed rooms still need
-   verification on a disposable live fort.
+1. **Furniture-order / bed-placement safety — implemented in PR #14; offline CI
+   passed, live-fort behavior not yet verified.** `antfarm_quarters` omits the
+   invalid `"material":"INORGANIC"` category field. It submits
+   `__reduce_amount=true`; the vendored DFHack 0.47 `workorder.lua` matcher
+   subtracts `amount_left` from equivalent open orders before creating only any
+   remainder. The target is reported as submitted only when
+   `dfhack.run_command()` returns `CR_OK`. Bed construction requires a free,
+   finished `df.item_type.BED`; logs alone are not treated as finished beds.
+   Accessory furniture is queued independently of the bed shortfall. Tick order
+   submits workshop targets before scheduling bed construction, and status text
+   says "queued" rather than claiming completed buildings. The 17-case quarters
+   Lua suite and full no-game CI pass. Manager validation, actual item production,
+   room ownership/extents and completed bedroom quality still need checking on a
+   disposable live fort.
 2. **Work orders were not issuing at all.** 61 manager orders, every one
    `status.validated = false`, and no jobs at the still or carpenter — so no beds,
    no booze, nothing. Cause not established. The manager was appointed and had no
