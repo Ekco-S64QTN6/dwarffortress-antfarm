@@ -164,6 +164,8 @@ class QuartersContracts(unittest.TestCase):
         self.assertIn("local function order_quantity(order, quantity)", workorder)
         self.assertIn("amount = amount - managed.amount_left", workorder)
         self.assertIn("if orders_match(order, managed)", workorder)
+        self.assertIn("if amount <= 0 then", workorder)
+        self.assertIn("return -1", workorder)
         self.assertIn("if ok and result == CR_OK then", quarters)
         self.assertNotIn('"material":"INORGANIC"', quarters)
 
