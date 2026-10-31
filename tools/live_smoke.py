@@ -109,6 +109,9 @@ def validate_target(
     runner = df_dir / RUNNER_NAME
     if not runner.is_file() or not os.access(runner, os.X_OK):
         raise SmokeError(f"executable DFHack wrapper not found: {runner}")
+    native_runner = df_dir / "hack" / "dfhack-run"
+    if not native_runner.is_file() or not os.access(native_runner, os.X_OK):
+        raise SmokeError(f"native DFHack RPC client not found or not executable: {native_runner}")
     lua_script = df_dir / LUA_SCRIPT
     if not lua_script.is_file():
         raise SmokeError(
@@ -167,6 +170,8 @@ def run_smoke(
 def print_summary(values: dict[str, str], report_path: Path) -> None:
     print("\nAntfarm live-smoke report (aggregate/read-only)")
     fields = (
+        "df_version",
+        "dfhack_version",
         "game_year",
         "game_paused",
         "citizens",
@@ -250,6 +255,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print_summary(values, report_path)
+    unavailable = [
+        area for area in ("orders", "quarters", "checklist")
+        if values.get(f"{area}_status") != "ok"
+    ]
+    if unavailable:
+        print(
+            "ERROR: the live probe ran, but required report modules failed: "
+            + ", ".join(unavailable),
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 
