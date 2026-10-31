@@ -67,6 +67,12 @@ are cheap to fix and were being ignored for twenty of the build's twenty-two ste
 "Tools match the labour" is the one that is easy to miss: autolabor will happily
 assign four miners on an embark carrying two picks, and the surplus stand still.
 
+For manager-order stalls, run `./dfhack-run antfarm_orders audit` before
+changing the manager, office, order definitions or labour assignments. This is
+read-only and prints validation/activity counts plus stalled jobs and unmet
+items. DF 0.47 has crashed when writing `status.validated`/`status.active`;
+the audit only reads those flags. Do not turn it into an automatic repair.
+
 ### Governance
 
 | Check | Passes when | Fixed by |
@@ -98,6 +104,7 @@ separately.
 | Check | Passes when | Fixed by |
 | :-- | :-- | :-- |
 | no impossible work orders | nothing queued that the embark cannot make | `antfarm_orders reap` |
+| manager-order validation | validation state is readable and unvalidated orders are understood | `antfarm_orders audit` (read-only; never write `status.validated` or `status.active`) |
 | defence at the entrance | cage traps or guard animals | `antfarm_defence traps` / `dogs` |
 | lockdown lever | a lever named gate/drawbridge/portcullis exists | name one in game |
 | usable metals | the embark yields some martial metal | `antfarm_trade` for what it does not |
