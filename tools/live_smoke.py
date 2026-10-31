@@ -77,8 +77,11 @@ def validate_target(
     if not df_dir.is_dir():
         raise SmokeError(f"not a Dwarf Fortress directory: {df_dir}")
 
-    save_root = (df_dir / "data" / "save").resolve(strict=True)
-    save_dir = (save_root / region).resolve(strict=True)
+    try:
+        save_root = (df_dir / "data" / "save").resolve(strict=True)
+        save_dir = (save_root / region).resolve(strict=True)
+    except OSError as exc:
+        raise SmokeError(f"save root or selected region does not exist: {exc}") from exc
     if save_dir.parent != save_root or not save_dir.is_dir():
         raise SmokeError("selected region is not a direct folder under data/save")
     if not (save_dir / "world.sav").is_file():
