@@ -73,7 +73,9 @@ game/  (Dwarf Fortress + DFHack, Lua)          antfarm/  (Python)
   antfarm_metals.lua   vein survey
   antfarm_trade.lua    depot/caravan
   antfarm_defence.lua  traps/guards
-  antfarm_quarters.lua bedrooms
+  antfarm_quarters.lua bedrooms; queues workshop furniture orders, counts
+                        outstanding orders, and only schedules bed construction
+                        when a free finished BED item exists
   antfarm_military.lua squads/training
   antfarm_sustenance.lua food/drink/labour
   antfarm_checklist.lua fort viability
