@@ -42,6 +42,14 @@ finding-by-finding review of the earlier report.
    unproven. **Diagnose this before anything else**: it blocks the entire
    production economy, and both the bed and booze failures above are downstream
    of it.
+
+   A new **read-only** diagnostic is now available:
+   `./dfhack-run antfarm_orders audit`. It reports the current validated /
+   unvalidated / unknown and active / inactive / unknown counts, plus impossible
+   orders, stalled jobs and unmet job-item requirements. It reads the status bits
+   but never writes them. Capture this output before changing the manager, office,
+   work-order definitions or labour assignments; the office hypothesis remains
+   unproven until observed on the affected save.
 3. **I crashed the fort chasing that.** Writing `status.validated`/`status.active`
    across the order list segfaulted DF silently — no error, no core, nothing in
    the log. Recorded as AGENTS.md 6.1.12: read those bits, never write them. The
