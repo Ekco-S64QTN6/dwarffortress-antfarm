@@ -104,7 +104,7 @@ class SubsystemHealth(unittest.TestCase):
         self.assertIn("AUTOMATION WARN:", line)
         self.assertIn("antfarm_orders", line)
         self.assertIn("report_error", line)
-        self.assertIn("bad \\[field\\]", line)
+        self.assertIn("bad \\[field]", line)
         self.assertIn("tick: tick exploded", line)
 
     def test_last_successful_report_going_stale_is_visible(self):
