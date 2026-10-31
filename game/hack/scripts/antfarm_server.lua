@@ -80,7 +80,13 @@ antfarm = antfarm or {
     subsystems_time = 0,
     subsys_cursor = 0,
     subsys_errors = {},
+    subsys_report_success = {},
 }
+-- The antfarm table survives script reloads in DFHack. Older sessions have
+-- subsys_errors but predate the per-report freshness registry.
+antfarm.subsys_errors = antfarm.subsys_errors or {}
+antfarm.subsys_report_success = antfarm.subsys_report_success or {}
+
 
 -- ---------------------------------------------------------------- --
 -- minimal JSON encoder                                             --
@@ -539,6 +545,12 @@ end
 
 local SUBSYSTEMS_REFRESH_SEC = 25
 
+local function short_error(err)
+    local message = tostring(err):gsub('[%c]+', ' ')
+    if #message > 240 then message = message:sub(1, 237) .. '...' end
+    return message
+end
+
 local function subsystems_summary()
     local now = wall_ms() / 1000
     if antfarm.subsystems_cache and now - (antfarm.subsystems_time or 0) < SUBSYSTEMS_REFRESH_SEC then
@@ -546,6 +558,7 @@ local function subsystems_summary()
     end
 
     local summary = {}
+    local health = {}
 
     -- Each block below reads the field names the module's own report() actually
     -- returns. An earlier version guessed them -- `rep.depot ~= nil` on a field
@@ -554,10 +567,42 @@ local function subsystems_summary()
     -- trade depot and full housing for a fort that had neither. Both halves
     -- have to agree, the same way test_wire.py makes them agree for commands.
     local function ask(name, fn)
+        local status = {report_status = 'unknown'}
         local ok, mod = pcall(reqscript, name)
-        if not ok or type(mod) ~= 'table' or not mod.report then return end
-        local ok2, rep = pcall(mod.report)
-        if ok2 and type(rep) == 'table' then pcall(fn, rep) end
+        if not ok then
+            status.report_status = 'load_error'
+            status.report_error = short_error(mod)
+        elseif type(mod) ~= 'table' then
+            status.report_status = 'invalid_module'
+        elseif type(mod.report) ~= 'function' then
+            status.report_status = 'missing_report'
+        else
+            local ok2, rep = pcall(mod.report)
+            if not ok2 then
+                status.report_status = 'report_error'
+                status.report_error = short_error(rep)
+            elseif type(rep) ~= 'table' then
+                status.report_status = 'invalid_report'
+            else
+                local ok3, err3 = pcall(fn, rep)
+                if ok3 then
+                    status.report_status = 'ok'
+                    antfarm.subsys_report_success[name] = now
+                else
+                    status.report_status = 'mapping_error'
+                    status.report_error = short_error(err3)
+                end
+            end
+        end
+
+        local last_success = antfarm.subsys_report_success[name]
+        if last_success then
+            status.report_age_sec = math.max(0, now - last_success)
+        end
+        if antfarm.subsys_errors[name] then
+            status.tick_error = short_error(antfarm.subsys_errors[name])
+        end
+        health[name] = status
     end
 
     ask('antfarm_nobles', function(rep)
@@ -657,11 +702,19 @@ local function subsystems_summary()
         }
     end)
 
-    -- A subsystem that throws every cycle is invisible otherwise: its numbers
-    -- simply stop moving. Surface the error so the dashboard can say which one.
+    -- Report failures are distinct from tick failures: a module may still be
+    -- automating correctly while its dashboard projection breaks, or the
+    -- reverse. Publish both and retain the last successful report age.
+    summary.health = health
     local errs = {}
     for name, msg in pairs(antfarm.subsys_errors or {}) do
-        table.insert(errs, name .. ': ' .. msg)
+        table.insert(errs, name .. ': tick: ' .. short_error(msg))
+    end
+    for name, state in pairs(health) do
+        if state.report_status ~= 'ok' then
+            local detail = state.report_error and (': ' .. state.report_error) or ''
+            table.insert(errs, name .. ': report ' .. state.report_status .. detail)
+        end
     end
     table.sort(errs)
     if #errs > 0 then summary.errors = arr(errs) end
@@ -1095,7 +1148,18 @@ local function run_subsystems()
     local name = SUBSYSTEMS[antfarm.subsys_cursor]
 
     local ok, mod = pcall(reqscript, name)
-    if not ok or type(mod) ~= 'table' or not mod.tick then return end
+    if not ok then
+        antfarm.subsys_errors[name] = 'load failed: ' .. short_error(mod)
+        return
+    end
+    if type(mod) ~= 'table' then
+        antfarm.subsys_errors[name] = 'invalid module returned'
+        return
+    end
+    if type(mod.tick) ~= 'function' then
+        antfarm.subsys_errors[name] = 'missing tick()'
+        return
+    end
 
     -- A raise inside a subsystem must never take the bridge down with it: this
     -- runs in the same pcall chain that writes the state file, and a module
@@ -1104,7 +1168,7 @@ local function run_subsystems()
     if ok2 then
         antfarm.subsys_errors[name] = nil
     else
-        antfarm.subsys_errors[name] = tostring(err)
+        antfarm.subsys_errors[name] = short_error(err)
     end
 end
 
