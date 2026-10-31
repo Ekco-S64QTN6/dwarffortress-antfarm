@@ -64,7 +64,7 @@ class DreamfortCatalogue(unittest.TestCase):
         #dig, #build, #place, #zone, #query). Exclude #notes, which labels
         # walkthrough documentation rather than executable blueprints.
         labels = set(re.findall(
-            r"#(?!notes\\b)[A-Za-z0-9_-]+\\s+label\\(([^)]+)\\)",
+            r"#(?!notes\b)[A-Za-z0-9_-]+\s+label\(([^)]+)\)",
             catalogue,
         ))
         missing = sorted({step.lstrip("/") for step in steps} - labels)
