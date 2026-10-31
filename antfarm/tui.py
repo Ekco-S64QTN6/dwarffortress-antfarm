@@ -91,6 +91,69 @@ def vital_reserve(vitals, key, scale=1000):
     return max(0.0, 1.0 - (raw / float(critical))) * scale
 
 
+def format_subsystem_health(subsystems, stale_after=75.0):
+    """Render the Lua bridge's per-module report/tick health without guessing.
+
+    A report can be missing or broken while the fortress still runs; likewise,
+    a tick can fail while its last report remains readable. Keep those states
+    separate and flag reports whose last successful projection is too old.
+    """
+    if not isinstance(subsystems, dict):
+        return None
+    health = subsystems.get("health")
+    if not isinstance(health, dict) or not health:
+        return None
+
+    issues = []
+    healthy = 0
+    for raw_name, state in sorted(health.items()):
+        name = escape(str(raw_name))
+        if not isinstance(state, dict):
+            issues.append(f"{name} (invalid health record)")
+            continue
+
+        problems = []
+        report_status = state.get("report_status", "unknown")
+        if report_status != "ok":
+            problems.append(str(report_status))
+
+        report_error = state.get("report_error")
+        if report_error:
+            problems.append(str(report_error))
+
+        tick_error = state.get("tick_error")
+        if tick_error:
+            problems.append("tick: " + str(tick_error))
+
+        age = state.get("report_age_sec")
+        if report_status == "ok":
+            if (not isinstance(age, (int, float)) or isinstance(age, bool)):
+                problems.append("report age unknown")
+            elif age > stale_after:
+                problems.append(f"stale {int(age)}s")
+
+        if problems:
+            detail = escape(", ".join(problems)[:100])
+            issues.append(f"{name} ({detail})")
+        else:
+            healthy += 1
+
+    total = len(health)
+    if not issues:
+        return (
+            f"[bold #59FF8E]AUTOMATION:[/] "
+            f"{healthy}/{total} subsystem reports healthy"
+        )
+
+    detail = "; ".join(issues[:3])
+    if len(issues) > 3:
+        detail += f"; +{len(issues) - 3} more"
+    return (
+        f"[bold #FFC857]AUTOMATION WARN:[/] "
+        f"{healthy}/{total} healthy - {detail}"
+    )
+
+
 def render_progress_bar(value, max_value, width=15, color="cyan"):
     if max_value <= 0:
         return "░" * width
@@ -223,7 +286,8 @@ def generate_story_narrative(unit, announcements):
 
 class HeaderWidget(Static):
     def update_stats(self, stats, mode, active_unit_name=None, active_unit_job=None,
-                     active_interest=0, twitch=None, build=None, ui=None):
+                     active_interest=0, twitch=None, build=None, ui=None,
+                     subsystems=None):
         logo = (
             "[bold #00F5FF] ___  ___  [/][bold #FF2D95]  ___ ___  __  __ ___  _   _  _  ___  _  _ [/]\n"
             "[bold #00F5FF]|   \\| __| [/][bold #FF2D95] / __/ _ \\|  \\/  | _ \\/_\\ | \\| |/ _ \\| \\| |[/]\n"
@@ -312,8 +376,12 @@ class HeaderWidget(Static):
                            f"{ui.get('popups_dismissed', 0)} popup(s), "
                            f"{ui.get('screens_dismissed', 0)} screen(s)"
                            f"{'  |  ' + last[:70] if last else ''}[/]")
-            stats_line += f"\n{ui_line}" 
-        
+            stats_line += f"\n{ui_line}"
+
+        subsystem_line = format_subsystem_health(subsystems)
+        if subsystem_line:
+            stats_line += f"\n{subsystem_line}"
+
         self.update(
             f"{logo}    {stats_line}\n"
             f"───────────────────────────────────────────────────────────────────────────\n"
@@ -753,6 +821,7 @@ class AntfarmApp(App):
                 twitch=self._twitch_status(),
                 build=state.get("build"),
                 ui=state.get("ui"),
+                subsystems=state.get("subsystems"),
             )
             self.query_one("#identity-panel", DwarfIdentityWidget).update_unit(unit)
             self.query_one("#activity-panel", DwarfActivityWidget).update_activity(unit, announcements)
