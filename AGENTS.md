@@ -233,7 +233,7 @@ material when the JSON omits `material`; a generic category word such as
 `INORGANIC` is not a concrete matinfo identifier. Do not add that category as the
 order's explicit `material`. Use the vendored workorder script's
 `__reduce_amount`: its matcher subtracts equivalent open orders' `amount_left`
-before creating any remaining quantity. Count a target as submitted only when
+from the requested target before creating any remaining quantity. Count a target as submitted only when
 `dfhack.run_command()` returns `CR_OK`. `constructBuilding` queues an in-game
 construction job; it does not mean the building is already complete. For beds,
 only a free finished `BED` item satisfies the precondition. Logs are inputs to the
