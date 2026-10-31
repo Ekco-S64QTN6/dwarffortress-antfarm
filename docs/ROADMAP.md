@@ -28,7 +28,7 @@ finding-by-finding review of the earlier report.
 
 ### Found and not yet fixed
 
-1. **Furniture-order / bed-placement safety — implementation in PR #13; CI
+1. **Furniture-order / bed-placement safety — implementation in PR #14; CI
    pending, not live-fort verified.** `antfarm_quarters` now omits the invalid
    category token `"material":"INORGANIC"` from workorder JSON, so DFHack 0.47's
    workorder tool can select any valid material. It submits the native
