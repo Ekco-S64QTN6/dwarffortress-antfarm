@@ -56,7 +56,7 @@ directory; it does not mutate the save.
    ```bash
    DF_DIR="/absolute/path/to/Dwarf Fortress"
    REGION="region_smoke"
-   printf '%s\\n' 'I UNDERSTAND THIS IS A DISPOSABLE ANT FARM TEST SAVE.' \
+   printf '%s\n' 'I UNDERSTAND THIS IS A DISPOSABLE ANT FARM TEST SAVE.' \
      > "$DF_DIR/data/save/$REGION/.antfarm-disposable-save"
    ```
 4. Start Dwarf Fortress normally and manually load **that copied region**.
