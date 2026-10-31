@@ -20,9 +20,30 @@
 
 local args = {...}
 local run_id = tostring(args[1] or '')
+local selected_region = tostring(args[2] or '')
 if #run_id ~= 32 or not run_id:match('^[0-9a-f]+$') then
     qerror('antfarm_live_smoke: expected a 32-character lowercase hex run id')
 end
+if selected_region == '' or not selected_region:match('^[A-Za-z0-9_-]+$')
+        or selected_region == 'current' then
+    qerror('antfarm_live_smoke: expected one safe save-folder name')
+end
+
+local ok_path, df_path = pcall(dfhack.getDFPath)
+if not ok_path or type(df_path) ~= 'string' or df_path == '' then
+    qerror('antfarm_live_smoke: dfhack.getDFPath() did not return the DF root')
+end
+local function normalize_path(path)
+    return tostring(path):gsub('\\\\', '/'):gsub('/+$', '')
+end
+local expected_save_path = normalize_path(df_path .. '/data/save/' .. selected_region)
+local expected_suffix = '/data/save/' .. selected_region
+local ok_save, current_save_path = pcall(dfhack.getSavePath)
+local current_save_normalized = ok_save and current_save_path
+    and normalize_path(current_save_path) or ''
+local loaded_save_matches = current_save_normalized == expected_save_path
+    or (current_save_normalized ~= ''
+        and current_save_normalized:sub(-#expected_suffix) == expected_suffix)
 
 local rows = {
     'format=antfarm-live-smoke-v1',
@@ -58,6 +79,9 @@ end
 local ok_map, map_loaded = pcall(dfhack.isMapLoaded)
 map_loaded = ok_map and map_loaded == true
 put('map_loaded', map_loaded)
+put('loaded_save_matches', loaded_save_matches)
+put('loaded_save_status', ok_save and current_save_path and 'ok' or 'unavailable')
+put('loaded_save_folder', current_save_normalized:match('([^/]+)$') or 'unknown')
 
 if map_loaded then
     -- This audit is explicitly read-only. It only reads manager-order flags,
@@ -126,10 +150,6 @@ else
     put('checklist_status', 'not_run')
 end
 
-local ok_path, df_path = pcall(dfhack.getDFPath)
-if not ok_path or type(df_path) ~= 'string' or df_path == '' then
-    qerror('antfarm_live_smoke: dfhack.getDFPath() did not return the DF root')
-end
 local filename = df_path .. '/antfarm_live_smoke_' .. run_id .. '.txt'
 local temporary = filename .. '.tmp'
 local file, open_error = io.open(temporary, 'w')
