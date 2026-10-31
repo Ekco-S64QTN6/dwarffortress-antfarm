@@ -89,9 +89,38 @@ required module report.
 ## What this does not prove
 
 A successful report means the three read-only report paths executed against a
-loaded map. It does **not** prove a manager order will validate, that the
-carpenter will produce furniture, that a construction will complete, that beds
-will become properly assigned bedrooms, or that the fortress survives over
-time. Those require a separately controlled live test with observations before
-and after each intentionally mutating action. Do not turn this probe into an
-automatic repair or add it to CI.
+loaded map. The recorded 2026-10-31 run found all four existing manager orders
+validated; it does **not** prove future or newly queued orders will validate,
+that the carpenter will produce furniture, that a construction will complete,
+that beds will become properly assigned bedrooms, or that the fortress survives
+over time. Those require a separately controlled live test with observations
+before and after each intentionally mutating action. Do not turn this probe into
+an automatic repair or add it to CI.
+
+
+## Recorded live validation — 2026-10-31
+
+The first operator-run probe completed successfully against a separately copied
+`region_smoke` fortress. The runner accepted the report only after the loaded
+save path exactly matched the marked region folder.
+
+| Measurement | Captured value |
+| :-- | :-- |
+| Dwarf Fortress / DFHack | 0.47.05 linux64 / 0.47.05-r8 |
+| Loaded save identity | `region_smoke`, exact match |
+| Game state | Year 25, unpaused, map loaded |
+| Citizens | 7 |
+| Beds / defined bedrooms / owned beds | 0 / 0 / 0 |
+| Unhoused citizens | 7 |
+| Furniture (doors / chests / cabinets) | 0 / 0 / 0 |
+| Manager orders | 4 total; 4 validated; 0 unvalidated; 0 unknown |
+| Stalled jobs / unmet requirements | 0 / 0 |
+| Manager office | `not_required` (7 citizens) |
+| Survival checklist | 10 pass; 4 fail; 5 todo; 0 warn |
+
+The probe itself was read-only. The result establishes that the save-identity
+check and the order, quarters and checklist report entrypoints worked against a
+live map. It also captures an early-fort housing deficit; it does not establish
+that queued work will finish or that the fort is self-sustaining. Use
+`antfarm_checklist fail`, `antfarm_orders audit`, and
+`antfarm_quarters status` for the detailed read-only follow-up.

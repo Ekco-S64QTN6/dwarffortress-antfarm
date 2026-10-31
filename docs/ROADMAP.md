@@ -87,18 +87,17 @@ finding-by-finding review of the earlier report.
    read. It is upstream quickfort, not ours, and appears harmless — but it has not
    been traced.
 8. **Disposable live-smoke capture is implemented in PR #16; offline CI
-   passed, but it has not yet been run against a live game.** The opt-in
-   `tools/live_smoke.py` wrapper requires a copied fortress folder with
-   `world.sav`, an exact `.antfarm-disposable-save` marker, and two explicit
-   operator confirmations. Its Lua probe calls only the read-only manager audit,
-   quarters report and survival checklist report, then writes an aggregate-only
-   file under the DF installation root. The live probe uses
-   `dfhack.getSavePath()` to require an exact match with the selected region.
-   Offline CI covers its path gates, symlink rejection, loaded-map and
-   loaded-save identity checks, report parsing and Lua entrypoint allowlist.
-   An operator must still run it with a separately copied fortress loaded in
-   DFHack before it can produce live evidence. See
-   [the live-smoke procedure](LIVE-SMOKE.md).
+   passed, and the first live run succeeded on 2026-10-31 against the operator's
+   separate `region_smoke` copy (DF 0.47.05 linux64, DFHack 0.47.05-r8).
+   `dfhack.getSavePath()` matched the exact selected folder, the map was loaded,
+   all three read-only module reports completed, and the game was unpaused.
+   The captured baseline was 7 citizens, 0 beds/bedrooms, 4 manager orders (all
+   4 validated), 0 stalled jobs, 0 unmet requirements, and manager office
+   `not_required`. The survival checklist reported 10 pass, 4 fail, 5 todo,
+   0 warn. This proves the live diagnostic paths and active-save identity guard
+   work; it does not prove future orders, furniture production, bedroom
+   completion, or long-term survival. See
+   [the live-smoke procedure](LIVE-SMOKE.md) for the recorded result.
 
 ### Cross-cutting hardening completed 2026-10-31
 
