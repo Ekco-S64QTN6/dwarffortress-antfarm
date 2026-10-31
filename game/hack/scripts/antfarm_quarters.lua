@@ -278,14 +278,14 @@ end
 function queue_furniture()
     local h = housing()
     local short = math.max(0, h.citizens - h.beds)
-    if short == 0 then return {}, 'every citizen has a bed' end
-    local batch = math.min(short, MAX_BATCH)
     local queued, skipped = {}, {}
     for _, item in ipairs(PER_ROOM) do
         local have = ({
             beds = h.beds, doors = h.doors, chests = h.chests, cabinets = h.cabinets,
         })[item.name] or 0
-        local target = math.max(0, math.min(batch, h.citizens - have))
+        -- Each furniture type has its own shortfall. Do not stop queueing
+        -- doors/chests/cabinets just because bed count has caught up.
+        local target = math.max(0, math.min(MAX_BATCH, h.citizens - have))
         local pending, pending_error = pending_order_amount(item.job)
         if pending == nil then
             table.insert(skipped, ('%s (cannot safely inspect pending orders: %s)')
@@ -305,7 +305,9 @@ function queue_furniture()
             end
         end
     end
-    local detail = ('%d citizens without a bed'):format(short)
+    local detail = short > 0
+        and ('%d citizens without a bed'):format(short)
+        or 'all citizens have beds; checking accessory furniture separately'
     if #skipped > 0 then
         detail = detail .. '; skipped safely: ' .. table.concat(skipped, ', ')
     end
