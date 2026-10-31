@@ -55,12 +55,14 @@ Rain is a real stress source in 0.47, and an outdoor meeting area means the whol
 fort stands in it. Sleeping on the floor is a standing, cumulative penalty. Both
 are cheap to fix and were being ignored for twenty of the build's twenty-two steps.
 
-`antfarm_quarters orders` queues workshop manager-orders; it does not produce
-finished items immediately. Repeated calls account for outstanding matching
-orders, so a slow or unvalidated manager does not receive a fresh full batch every
-ten minutes. `antfarm_quarters beds` schedules bed construction only when a free,
-finished BED item exists. Logs are a carpentry input, not the finished bed consumed
-by the construction job. The result says "queued" rather than claiming that DF has
+`antfarm_quarters orders` submits workshop manager-order targets; it does not
+produce finished items immediately. It uses the vendored DFHack 0.47
+`workorder.lua` `__reduce_amount` matcher, which subtracts existing matching
+orders' `amount_left` before creating any remaining quantity. The code reports a
+target as submitted only when `dfhack.run_command()` returns `CR_OK`.
+`antfarm_quarters beds` schedules bed construction only when a free, finished BED
+item exists. Logs are a carpentry input, not the finished bed consumed by the
+construction job. The result says "queued" rather than claiming that DF has
 completed the building. Check `antfarm_orders audit` if furniture orders are not
 issuing; do not edit the protected order status bits.
 
