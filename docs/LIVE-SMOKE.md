@@ -39,10 +39,13 @@ All of the following are required before the wrapper will invoke DFHack:
 
 The Lua probe also calls DFHack 0.47.05's documented `dfhack.getSavePath()`
 and compares the currently loaded save directory with the selected
-`data/save/<region>` folder. If the API is unavailable, no save is loaded, or
-the path identifies another region, the Python wrapper refuses to accept the
-report. The `--confirm-loaded-save` flag is still required as a separate human
-attestation. See the [DFHack 0.47.05-r7 Lua API](https://docs.dfhack.org/en/0.47.05-r7/docs/Lua%20API.html)
+`data/save/<region>` folder. It accepts either the exact absolute path under
+`dfhack.getDFPath()` or the exact relative save path; it does not accept a
+folder-name-only suffix match. If the API is unavailable, no save is loaded, or
+the path identifies another region or installation, the Python wrapper refuses
+to accept the report. The `--confirm-loaded-save` flag is still required as a
+separate human attestation. See the
+[DFHack 0.47.05-r7 Lua API](https://docs.dfhack.org/en/0.47.05-r7/docs/Lua%20API.html)
 for `getSavePath()` (current save directory or nil when no save is loaded).
 
 ## Procedure
