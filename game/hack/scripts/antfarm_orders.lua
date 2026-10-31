@@ -230,7 +230,9 @@ local function manager_office_status()
 
     local citizens = 0
     for _, unit in ipairs(units) do
-        local ok, is_citizen = pcall(dfhack.units.isCitizen, unit)
+        local ok, is_citizen = pcall(function()
+            return dfhack.units.isCitizen(unit)
+        end)
         if not ok then
             return {status = 'unknown', citizens = citizens,
                     detail = 'could not classify active units'}
@@ -267,12 +269,14 @@ local function manager_office_status()
                 detail = 'manager position is vacant'}
     end
 
-    local ok_hf, hf = pcall(df.historical_figure.find, manager.histfig)
+    local ok_hf, hf = pcall(function()
+        return df.historical_figure.find(manager.histfig)
+    end)
     if not ok_hf or not hf or not hf.unit_id or hf.unit_id == -1 then
         return {status = 'unknown', citizens = citizens,
                 detail = 'manager historical figure has no active unit'}
     end
-    local ok_unit, unit = pcall(df.unit.find, hf.unit_id)
+    local ok_unit, unit = pcall(function() return df.unit.find(hf.unit_id) end)
     if not ok_unit or not unit then
         return {status = 'unknown', citizens = citizens,
                 detail = 'manager unit could not be resolved'}
