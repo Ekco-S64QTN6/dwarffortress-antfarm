@@ -55,14 +55,25 @@ steer the whole thing.
 
 ## 1. Running it
 
-Start the game and the dashboard in either order — the dashboard waits for the
-game and picks it up automatically.
+The one-command launcher starts the game and dashboard together. On the first
+dashboard launch it creates `.venv` and installs the pinned requirements
+automatically. It requires Python 3.12 or newer (and pip/venv support); the
+first install needs an internet connection.
+
+```bash
+./start_antfarm.sh
+```
+
+To run the game and dashboard separately, set up the environment once and use
+two terminals from the repository root:
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-cd game && ./dfhack      # terminal 1: the game
-./.venv/bin/python -m antfarm.tui      # terminal 2: the dashboard
+# terminal 1
+(cd game && ./dfhack)
+# terminal 2
+.venv/bin/python -m antfarm.tui
 ```
 
 The in-game bridge starts by itself when a save loads. Close the dashboard and

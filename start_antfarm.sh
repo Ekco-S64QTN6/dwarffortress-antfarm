@@ -16,6 +16,52 @@ source "$BASE_DIR/tools/lib/antfarm_saves.sh"
 PY="$BASE_DIR/.venv/bin/python"
 STATE="$BASE_DIR/game/antfarm_state.json"
 
+# Create the pinned Python runtime on first use. The game can still start when
+# Python is unavailable, but the dashboard/Twitch client must not be launched
+# with a missing interpreter or missing Textual dependencies.
+prepare_python() {
+    local candidate=""
+    local py_version='import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'
+
+    if [ ! -x "$PY" ]; then
+        for candidate in python3.12 python3; do
+            if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "$py_version" >/dev/null 2>&1; then
+                break
+            fi
+            candidate=""
+        done
+        if [ -z "$candidate" ]; then
+            echo "Antfarm dashboard requires Python 3.12 or newer." >&2
+            echo "Install Python 3.12+ (including venv support), then run ./start_antfarm.sh again." >&2
+            return 1
+        fi
+        echo "  -> creating the Antfarm Python environment with $candidate" >&2
+        if ! "$candidate" -m venv "$BASE_DIR/.venv"; then
+            echo "Antfarm: could not create .venv. On Debian/Ubuntu, install the matching python3.12-venv package." >&2
+            return 1
+        fi
+    elif ! "$PY" -c "$py_version" >/dev/null 2>&1; then
+        echo "Antfarm: the existing .venv does not use Python 3.12 or newer." >&2
+        echo "Remove .venv and rerun ./start_antfarm.sh to recreate it with a supported interpreter." >&2
+        return 1
+    fi
+
+    if ! (cd "$BASE_DIR" && "$PY" -c 'import antfarm.tui, antfarm.twitch' >/dev/null 2>&1); then
+        echo "  -> installing Antfarm Python requirements" >&2
+        if ! "$PY" -m pip install --disable-pip-version-check -r "$BASE_DIR/requirements.txt"; then
+            echo "Antfarm: dependency installation failed; check your network and Python pip setup." >&2
+            return 1
+        fi
+    fi
+
+    if ! (cd "$BASE_DIR" && "$PY" -c 'import antfarm.tui, antfarm.twitch' >/dev/null 2>&1); then
+        echo "Antfarm: Python dependencies are still unavailable after installation." >&2
+        echo "Try: .venv/bin/python -m pip install -r requirements.txt" >&2
+        return 1
+    fi
+    return 0
+}
+
 # ---------------------------------------------------------------- #
 # terminal detection                                               #
 # ---------------------------------------------------------------- #
@@ -203,9 +249,13 @@ launch_all() {
     # The dashboard goes up first so the watchdog is armed (screen dismissal is
     # only enabled while a client is attached) before the fort starts producing
     # popups of its own.
-    echo "  -> window 2: Antfarm dashboard"
-    spawn_term "Antfarm Dashboard" \
-        "cd $(shq "$BASE_DIR") && $(shq "$PY") -m antfarm.tui; echo; echo '[dashboard exited - press enter to close]'; read"
+    if prepare_python; then
+        echo "  -> window 2: Antfarm dashboard"
+        spawn_term "Antfarm Dashboard" \
+            "cd $(shq "$BASE_DIR") && $(shq "$PY") -m antfarm.tui; echo; echo '[dashboard exited - press enter to close]'; read"
+    else
+        echo "  -> dashboard skipped; the game will continue without it."
+    fi
 
     case "$state" in
         fort)  echo "  -> continuing the existing fort" ;;
@@ -242,7 +292,10 @@ show_status() {
         # The path is passed in rather than assumed: this function is safe to
         # call from anywhere, not just with the repo root as the working
         # directory.
-        "$PY" - "$STATE" <<'PY'
+        local status_py="$PY"
+        [ -x "$status_py" ] || status_py=$(command -v python3 || true)
+        if [ -n "$status_py" ]; then
+            "$status_py" - "$STATE" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1]))
 st = s.get("fortress_stats", {})
@@ -279,6 +332,9 @@ if u:
     if u.get("pending_popups"):
         print(f"  BLOCKED    : {u['pending_popups']} popup(s) waiting")
 PY
+        else
+            echo "  (Python 3 is unavailable; status details omitted)"
+        fi
     else
         echo "IPC state file: absent - is a save loaded?"
         echo "  The bridge starts from dfhack-config/init/onMapLoad.init;"
@@ -332,8 +388,8 @@ show_menu() {
 
     case "$choice" in
         2) cd game || exit 1; exec ./dfhack ;;
-        3) exec "$PY" -m antfarm.tui ;;
-        4) exec "$PY" -m antfarm.twitch ;;
+        3) prepare_python || exit 1; exec "$PY" -m antfarm.tui ;;
+        4) prepare_python || exit 1; exec "$PY" -m antfarm.twitch ;;
         5) show_status ;;
         6) show_utilities ;;
         *) launch_all ;;
