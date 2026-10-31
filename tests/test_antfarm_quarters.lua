@@ -67,7 +67,7 @@ do
     end
 
     local queued, why = env.queue_furniture()
-    check('queues all four furniture work orders', #queued == 4,
+    check('submits four furniture workorder targets', #queued == 4,
           tostring(#queued) .. ' / ' .. tostring(why))
     check('workorder command invoked four times', #calls == 4, tostring(#calls))
 
@@ -97,8 +97,15 @@ do
           and jobs.ConstructChest and jobs.ConstructCabinet)
 
     local _, second_detail = env.queue_furniture()
-    check('second pass tells DFHack to reconcile matching open orders',
-          #calls == 8 and valid_json,
+    local repeated_payloads = true
+    for i = 5, #calls do
+        if calls[i][1] ~= 'workorder'
+                or not (calls[i][2] or ''):find('"__reduce_amount":true', 1, true) then
+            repeated_payloads = false
+        end
+    end
+    check('second pass still delegates de-duplication to the native matcher',
+          #calls == 8 and repeated_payloads,
           ('calls=%d detail=%s'):format(#calls, tostring(second_detail)))
 end
 
@@ -141,7 +148,7 @@ do
     local calls = 0
     w.dfhack.run_command = function() calls = calls + 1; return 5 end
     local queued, detail = env.queue_furniture()
-    check('non-CR_OK workorder results are not counted as queued',
+    check('non-CR_OK workorder results are not counted as submitted',
           #queued == 0 and calls == 4, ('queued=%d calls=%d'):format(#queued, calls))
     check('rejected workorders are surfaced as safe warnings',
           tostring(detail):find('workorder command failed', 1, true) ~= nil,
