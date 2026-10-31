@@ -238,8 +238,8 @@ end
 -- Queue the furniture the fort is short of.
 --
 -- DFHack 0.47's workorder tool supports __reduce_amount. It matches existing
--- open orders and adjusts their remaining amount toward amount_total instead of
--- adding another batch every 10-minute tick. Use the native matcher rather than
+-- open orders and subtracts their amount_left from the desired target before
+-- creating any remainder. Use the native matcher rather than
 -- counting every order of the same job type: a differently constrained order
 -- must not be mistaken for this furniture request.
 function queue_furniture()
