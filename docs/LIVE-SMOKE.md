@@ -55,7 +55,8 @@ for `getSavePath()` (current save directory or nil when no save is loaded).
    folder a distinct name such as `region_smoke`.
 2. Confirm the copy contains `world.sav` and install the repository's
    `game/hack/scripts/antfarm_*.lua` scripts in that DF installation's
-   `hack/scripts/` directory.
+   `hack/scripts/` directory. The launcher rejects symlinked save folders and
+   symlinked `world.sav` files.
 3. Create the marker only in the copied save:
    ```bash
    DF_DIR="/absolute/path/to/Dwarf Fortress"
