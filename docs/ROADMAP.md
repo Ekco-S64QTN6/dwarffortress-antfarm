@@ -75,6 +75,7 @@ finding-by-finding review of the earlier report.
 | **Save-selection safety** | The launcher refuses ambiguous save folders; a single fort can be selected explicitly; generated-world selection among multiple candidates remains a documented manual step |
 | **Dreamfort catalogue contract** | Static test parses all 22 Lua plan entries and verifies each corresponds to an actual `#meta` or `#config` label in vendored `dreamfort.csv` |
 | **Pinned Python runtime** | `requirements.txt` pins the TUI's direct and transitive dependencies to the versions exercised by Python 3.12 CI |
+| **Subsystem health telemetry** | The Lua bridge distinguishes module-load, report, mapping and tick failures, retains last-success age, and the dashboard surfaces unhealthy/stale modules instead of silently omitting them |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
