@@ -116,13 +116,21 @@ if map_loaded then
 
     put('game_year', df.global.cur_year or 0)
     put('game_paused', df.global.pause_state == true)
+    local ok_df, df_version = pcall(dfhack.getDFVersion)
+    if ok_df then put('df_version', df_version) end
+    local ok_dfhack, dfhack_version = pcall(dfhack.getDFHackVersion)
+    if ok_dfhack then put('dfhack_version', dfhack_version) end
 else
     put('orders_status', 'not_run')
     put('quarters_status', 'not_run')
     put('checklist_status', 'not_run')
 end
 
-local filename = 'antfarm_live_smoke_' .. run_id .. '.txt'
+local ok_path, df_path = pcall(dfhack.getDFPath)
+if not ok_path or type(df_path) ~= 'string' or df_path == '' then
+    qerror('antfarm_live_smoke: dfhack.getDFPath() did not return the DF root')
+end
+local filename = df_path .. '/antfarm_live_smoke_' .. run_id .. '.txt'
 local temporary = filename .. '.tmp'
 local file, open_error = io.open(temporary, 'w')
 if not file then
