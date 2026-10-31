@@ -19,7 +19,6 @@ Run standalone against a live fortress:
 """
 
 import concurrent.futures
-from collections import OrderedDict
 import json
 import logging
 import os
@@ -265,9 +264,9 @@ class TwitchBridge:
 
         self._send_times = []
         self._send_lock = threading.Lock()
-        # Ordered and capped so one-off chat logins cannot grow this registry
-        # for the lifetime of a long-running stream.
-        self._user_last_cmd = OrderedDict()
+        # Capped so one-off chat logins cannot grow this registry for the
+        # lifetime of a long-running stream. Active entries are never evicted.
+        self._user_last_cmd = {}
         self._next_user_cooldown_prune = 0.0
         self._last_camera_grab = 0.0
 
@@ -526,31 +525,37 @@ class TwitchBridge:
             or "moderator/1" in badges
         )
 
+    def _prune_user_cooldowns(self, now):
+        """Remove expired logins without evicting anyone still on cooldown."""
+        cutoff = now - USER_COOLDOWN
+        expired = [
+            login for login, timestamp in self._user_last_cmd.items()
+            if timestamp <= cutoff
+        ]
+        for login in expired:
+            self._user_last_cmd.pop(login, None)
+        self._next_user_cooldown_prune = now + USER_COOLDOWN_PRUNE_INTERVAL
+
     def _cooldown_ok(self, user):
         """Enforce per-viewer cooldowns with bounded, opportunistic cleanup."""
         now = time.monotonic()
-        if now >= self._next_user_cooldown_prune:
-            cutoff = now - USER_COOLDOWN
-            expired = [
-                login for login, timestamp in self._user_last_cmd.items()
-                if timestamp <= cutoff
-            ]
-            for login in expired:
-                self._user_last_cmd.pop(login, None)
-            self._next_user_cooldown_prune = (
-                now + USER_COOLDOWN_PRUNE_INTERVAL
-            )
-
         login = user.lower()
+        if now >= self._next_user_cooldown_prune:
+            self._prune_user_cooldowns(now)
+
         last = self._user_last_cmd.get(login)
         if last is not None and now - last < USER_COOLDOWN:
-            self._user_last_cmd.move_to_end(login)
             return False
 
+        # If every slot belongs to a viewer who is still on cooldown, refuse a
+        # new login rather than evicting an active viewer and letting them bypass
+        # the limit by reconnecting/chatting again during a burst.
+        if last is None and len(self._user_last_cmd) >= MAX_USER_COOLDOWN_ENTRIES:
+            self._prune_user_cooldowns(now)
+            if len(self._user_last_cmd) >= MAX_USER_COOLDOWN_ENTRIES:
+                return False
+
         self._user_last_cmd[login] = now
-        self._user_last_cmd.move_to_end(login)
-        while len(self._user_last_cmd) > MAX_USER_COOLDOWN_ENTRIES:
-            self._user_last_cmd.popitem(last=False)
         return True
 
     def say(self, text):
