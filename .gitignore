@@ -7,6 +7,8 @@ game/antfarm_cmd/
 game/antfarm_cmd.json
 game/antfarm_plan.json
 game/antfarm_worlds.txt
+game/antfarm_live_smoke_*.txt
+game/antfarm_live_smoke_*.txt.tmp
 legends/*
 !legends/.gitkeep
 antfarm.log
