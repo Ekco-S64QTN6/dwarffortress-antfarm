@@ -68,7 +68,7 @@ class DreamfortCatalogue(unittest.TestCase):
             r"#(?:meta|config)\s+label\(([^)]+)\)",
             catalogue,
         ))
-        missing = sorted(set(steps) - labels)
+        missing = sorted({step.lstrip("/") for step in steps} - labels)
         self.assertEqual(
             missing, [],
             "PLAN references labels absent from dreamfort.csv",
@@ -558,11 +558,11 @@ class ChatDispatch(unittest.TestCase):
         with mock.patch("antfarm.twitch.time.monotonic", return_value=100.0):
             for i in range(MAX_USER_COOLDOWN_ENTRIES + 100):
                 self.bridge._cooldown_ok(f"viewer-{i}")
-        self.assertEqual(
-            len(self.bridge._user_last_cmd), MAX_USER_COOLDOWN_ENTRIES
-        )
-        self.assertIn("viewer-0", self.bridge._user_last_cmd)
-        self.assertFalse(self.bridge._cooldown_ok("viewer-0"))
+            self.assertEqual(
+                len(self.bridge._user_last_cmd), MAX_USER_COOLDOWN_ENTRIES
+            )
+            self.assertIn("viewer-0", self.bridge._user_last_cmd)
+            self.assertFalse(self.bridge._cooldown_ok("viewer-0"))
 
     def test_a_full_cooldown_registry_rejects_new_logins_until_slots_expire(self):
         from antfarm.twitch import MAX_USER_COOLDOWN_ENTRIES
