@@ -20,9 +20,12 @@ step "Python syntax"
 if .venv/bin/python -m compileall -q antfarm/ tests/; then echo "  ok"; else fail=1; fi
 
 step "Shell syntax"
-for f in start_antfarm.sh tools/*.sh; do
+for f in start_antfarm.sh tools/*.sh tools/lib/*.sh tests/*.sh; do
     if bash -n "$f" 2>/dev/null; then echo "  ok    $f"; else echo "  FAIL  $f"; fail=1; fi
 done
+
+step "Save selection tests"
+if bash tests/test_save_selection.sh; then echo "  ok"; else echo "  FAIL"; fail=1; fi
 
 step "Lua unit tests"
 for t in tests/test_*.lua; do
