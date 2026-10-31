@@ -11,6 +11,7 @@
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$BASE_DIR" || exit 1
+source "$BASE_DIR/tools/lib/antfarm_saves.sh"
 
 PY="$BASE_DIR/.venv/bin/python"
 STATE="$BASE_DIR/game/antfarm_state.json"
@@ -70,29 +71,31 @@ df_running() { pgrep -x Dwarf_Fortress >/dev/null 2>&1; }
 # to tell them apart from outside the game (antfarm_worlds.lua documents this):
 #   world.sav present -> the world has a fortress    -> Continue Playing
 #   world.dat only    -> a generated world, no fort  -> Start Playing (embark)
+# Resolve exactly one save, or require an explicit ANTFARM_REGION when
+# several worlds/fortresses are present. Never let glob ordering choose which
+# fortress an unattended stream continues.
 world_state() {
-    local d
-    for d in "$BASE_DIR"/game/data/save/*/; do
-        [ -d "$d" ] || continue
-        [ "$(basename "$d")" = "current" ] && continue
-        if [ -f "$d/world.sav" ]; then echo "fort"; return; fi
-    done
-    for d in "$BASE_DIR"/game/data/save/*/; do
-        [ -d "$d" ] || continue
-        [ "$(basename "$d")" = "current" ] && continue
-        if [ -f "$d/world.dat" ]; then echo "world"; return; fi
-    done
-    echo "empty"
+    local selection kind region
+    if ! selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save"); then
+        echo "ambiguous"
+        return
+    fi
+    if [ -z "$selection" ]; then
+        echo "empty"
+        return
+    fi
+    IFS='|' read -r kind region <<< "$selection"
+    echo "$kind"
 }
 
 # The save folder holding a fortress, for DFHack's +load-save.
 fort_region() {
-    local d
-    for d in "$BASE_DIR"/game/data/save/*/; do
-        [ -d "$d" ] || continue
-        [ "$(basename "$d")" = "current" ] && continue
-        if [ -f "$d/world.sav" ]; then basename "$d"; return; fi
-    done
+    local selection kind region
+    selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save") || return 1
+    [ -n "$selection" ] || return 1
+    IFS='|' read -r kind region <<< "$selection"
+    [ "$kind" = "fort" ] || return 1
+    echo "$region"
 }
 
 # Lowest unused regionN, so generating never overwrites an existing world.
@@ -112,8 +115,9 @@ gen_world() {
     echo "     (this takes a few minutes and prints a lot; it is not stuck)"
     ( cd "$BASE_DIR/game" && ./df -gen "$region" RANDOM "$preset" ) \
         >"$BASE_DIR/game/worldgen.log" 2>&1
-    if [ "$(world_state)" = "empty" ]; then
-        echo "     worldgen FAILED - see game/worldgen.log"
+    local selection
+    if ! selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save") || [ -z "$selection" ]; then
+        echo "     worldgen FAILED or save selection became ambiguous - see game/worldgen.log"
         return 1
     fi
     echo "     world generated."
@@ -145,12 +149,28 @@ launch_all() {
         return 1
     fi
 
-    local state; state=$(world_state)
-    echo "Antfarm: starting up (world: $state, terminal: $term)"
+    local selection state region
+    if ! selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save"); then
+        echo "Antfarm: refusing to guess which saved world/fortress to launch."
+        echo "Choose explicitly with ANTFARM_REGION=<save-folder>, for example:"
+        echo "  ANTFARM_REGION=region2 ./start_antfarm.sh"
+        return 2
+    fi
+    if [ -z "$selection" ]; then
+        state="empty"
+        region=""
+    else
+        IFS='|' read -r state region <<< "$selection"
+    fi
+    echo "Antfarm: starting up (world: $state${region:+, save: $region}, terminal: $term)"
 
     if [ "$state" = "empty" ]; then
         gen_world || return 1
-        state=$(world_state)
+        if ! selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save") || [ -z "$selection" ]; then
+            echo "Antfarm: could not unambiguously resolve the generated world."
+            return 1
+        fi
+        IFS='|' read -r state region <<< "$selection"
     fi
 
     if df_running; then
@@ -168,8 +188,11 @@ launch_all() {
         # unnecessary -- autostart sat on it waiting for a screen that never came.
         local dfargs=""
         if [ "$state" = "fort" ]; then
-            local region; region=$(fort_region)
-            [ -n "$region" ] && dfargs="+load-save $region"
+            [ -n "$region" ] || {
+                echo "Antfarm: selected fortress has no usable save-region name."
+                return 1
+            }
+            dfargs="+load-save $region"
         fi
         echo "  -> window 1: Dwarf Fortress + DFHack${dfargs:+ ($dfargs)}"
         spawn_term "Dwarf Fortress" \
@@ -334,6 +357,7 @@ case "${1:-}" in
         echo "Environment:"
         echo "  ANTFARM_TERMINAL          force a terminal emulator"
         echo "  ANTFARM_WORLDGEN_PRESET   worldgen preset (default TOLKIEN_EPIC_MEDIUM)"
+        echo "  ANTFARM_REGION            explicit save folder when multiple worlds exist"
         ;;
     *) echo "Unknown option: $1 (try --help)"; exit 1 ;;
 esac
