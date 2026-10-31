@@ -187,7 +187,7 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | `game/hack/scripts/antfarm_metals.lua` | 3D mineral vein survey, metallurgy profile, and branch mining. |
 | `game/hack/scripts/antfarm_trade.lua` | Dedicated surface depot placement, caravan monitor, and auto-trading. |
 | `game/hack/scripts/antfarm_defence.lua` | Surface cage trap chokepoints and entrance watch-dog restraints. |
-| `game/hack/scripts/antfarm_quarters.lua` | Bedroom definition, room assignment, and furniture ordering. |
+| `game/hack/scripts/antfarm_quarters.lua` | Bedroom definition, room assignment, furniture workorders, and finished-bed-gated construction. |
 | `game/hack/scripts/antfarm_worlds.lua` | Lists save-game worlds and which DF menu each one appears under. |
 | `antfarm/client.py` | Python transport. |
 | `antfarm/engine.py` | Director AI, interest scoring, knowledge graph, plugin host. |
@@ -221,12 +221,22 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | `orders [scan|reap|stalls]` | Run `antfarm_orders`. |
 | `trade [status|depot|goods]` | Run `antfarm_trade`. |
 | `defence [status|traps|dogs]` | Run `antfarm_defence`. |
-| `quarters [assign|orders]` | Run `antfarm_quarters`. |
+| `quarters [status|assign|beds|orders]` | Run `antfarm_quarters`; `beds` only queues construction when a free finished BED item exists. |
 | `locations [status|hall|deities]` | Run `antfarm_locations`. |
 | `metals [<metal>]` | Run `antfarm_metals`. |
 | `autoslab` / `slabs` | Run `antfarm_autoslab`. |
 | `command <dfhack_cmd>` | Run any DFHack console command. |
 | `stop` | Shut the bridge down and release the camera. |
+
+**Quarters invariant:** DFHack 0.47's `workorder` command treats an omitted
+material as "any material"; a generic category word such as `INORGANIC` is not a
+complete matinfo identifier. Do not add that category as the order's explicit
+`material`. The quarters loop subtracts outstanding matching manager-order
+`amount_left` before queuing, so repeated 10-minute ticks do not multiply the
+same order backlog. `constructBuilding` queues an in-game construction job; it
+does not mean the building is already complete. For beds, only a free finished
+`BED` item satisfies the precondition. Logs are inputs to the carpenter's job,
+not substitutes for that finished item.
 
 ### 5.4. Heartbeat safety
 The server releases the camera lock (`df.global.ui.follow_unit = -1`) and drops to `idle` if no command arrives for 5 seconds, so a crashed client always returns control to the player. Clients must send `ping` or `mode` about once a second.
