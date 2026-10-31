@@ -44,6 +44,10 @@ class LiveSmokeSafety(unittest.TestCase):
             encoding="utf-8",
         )
         runner.chmod(0o755)
+        native_runner = self.df_dir / "hack" / "dfhack-run"
+        native_runner.parent.mkdir(parents=True)
+        native_runner.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+        native_runner.chmod(0o755)
         script = self.df_dir / smoke.LUA_SCRIPT
         script.parent.mkdir(parents=True)
         script.write_text("-- fake test install\n", encoding="utf-8")
@@ -117,6 +121,11 @@ class LiveSmokeSafety(unittest.TestCase):
             encoding="utf-8",
         )
         runner.chmod(0o755)
+        native_runner = self.df_dir / "hack" / "dfhack-run"
+        native_runner.chmod(0o644)
+        with self.assertRaisesRegex(smoke.SmokeError, "native DFHack RPC client"):
+            self.validate()
+        native_runner.chmod(0o755)
         df_dir, _save_dir, runner = self.validate()
         with self.assertRaisesRegex(smoke.SmokeError, "no fortress map is loaded"):
             smoke.run_smoke(df_dir, runner, timeout_seconds=5)
