@@ -79,7 +79,10 @@ def validate_target(
 
     try:
         save_root = (df_dir / "data" / "save").resolve(strict=True)
-        save_dir = (save_root / region).resolve(strict=True)
+        region_entry = save_root / region
+        if region_entry.is_symlink():
+            raise SmokeError("selected save folder must not be a symlink")
+        save_dir = region_entry.resolve(strict=True)
     except OSError as exc:
         raise SmokeError(f"save root or selected region does not exist: {exc}") from exc
     if save_dir.parent != save_root or not save_dir.is_dir():
