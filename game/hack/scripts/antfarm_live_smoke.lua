@@ -37,13 +37,17 @@ local function normalize_path(path)
     return tostring(path):gsub('\\', '/'):gsub('/+$', '')
 end
 local expected_save_path = normalize_path(df_path .. '/data/save/' .. selected_region)
-local expected_suffix = '/data/save/' .. selected_region
+local expected_relative_path = normalize_path('data/save/' .. selected_region)
 local ok_save, current_save_path = pcall(dfhack.getSavePath)
 local current_save_normalized = ok_save and current_save_path
     and normalize_path(current_save_path) or ''
+-- getSavePath() is normally absolute. Some packaged/portable layouts may
+-- report it relative to the process root, so accept only that exact relative
+-- form as a fallback. Do not use a suffix-only comparison: another DF
+-- installation can contain a region with the same folder name.
 local loaded_save_matches = current_save_normalized == expected_save_path
-    or (current_save_normalized ~= ''
-        and current_save_normalized:sub(-#expected_suffix) == expected_suffix)
+    or current_save_normalized == expected_relative_path
+    or current_save_normalized == ('./' .. expected_relative_path)
 
 local rows = {
     'format=antfarm-live-smoke-v1',
