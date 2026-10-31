@@ -137,6 +137,38 @@ do
           other_amounts == 9, tostring(other_amounts))
 end
 
+-- Accessory furniture has its own shortfall and is not gated by the bed
+-- count. Otherwise getting the final bed built early would suppress all later
+-- door/chest/cabinet orders.
+do
+    local w, env = fresh(3)
+    for i = 1, 3 do
+        w.df.global.world.buildings.all:push({
+            getType = function() return w.df.building_type.Bed end,
+            owner_id = i,
+            is_room = true,
+        })
+    end
+    local calls = {}
+    w.dfhack.run_command = function(...)
+        calls[#calls + 1] = {...}
+        return 0
+    end
+    local queued = env.queue_furniture()
+    local jobs = {}
+    for _, call in ipairs(calls) do
+        local json = call[2] or ''
+        local job = json:match('"job":"([^"]+)"')
+        local amount = tonumber(json:match('"amount_total":(%d+)'))
+        if job then jobs[job] = amount end
+    end
+    check('accessory orders still queue after every citizen has a bed',
+          #queued == 3 and #calls == 3)
+    check('only doors, chests and cabinets are queued when beds are complete',
+          jobs.ConstructDoor == 3 and jobs.ConstructChest == 3
+          and jobs.ConstructCabinet == 3 and jobs.ConstructBed == nil)
+end
+
 -- If the order vector is unreadable, the script skips queueing rather than
 -- treating unknown pending demand as zero and creating another batch.
 do
