@@ -123,11 +123,9 @@ class LiveSmokeSafety(unittest.TestCase):
 
     def test_live_probe_lua_uses_only_read_only_module_entrypoints(self):
         lua = (ROOT / "game" / smoke.LUA_SCRIPT).read_text(encoding="utf-8")
-        self.assertIn("reqscript('antfarm_orders')", lua)
-        self.assertIn("mod.audit()", lua)
-        self.assertIn("reqscript('antfarm_quarters')", lua)
-        self.assertIn("mod.report()", lua)
-        self.assertIn("reqscript('antfarm_checklist')", lua)
+        self.assertIn("module_report('antfarm_orders', 'audit')", lua)
+        self.assertIn("module_report('antfarm_quarters', 'report')", lua)
+        self.assertIn("module_report('antfarm_checklist', 'report')", lua)
         self.assertNotIn("dfhack.run_command", lua)
         self.assertNotIn("constructBuilding", lua)
         self.assertNotIn("setOwner", lua)
