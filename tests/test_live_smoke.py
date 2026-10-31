@@ -85,6 +85,18 @@ class LiveSmokeSafety(unittest.TestCase):
             self.validate()
         self.assertFalse((self.df_dir / "runner.calls").exists())
 
+    def test_rejects_a_symlinked_region_folder(self):
+        real_region = self.df_dir / "data" / "save" / "region_real"
+        real_region.mkdir()
+        (real_region / "world.sav").write_text("disposable save marker\\n")
+        (real_region / smoke.MARKER_NAME).write_text(
+            smoke.MARKER_CONTENT, encoding="utf-8"
+        )
+        alias = self.df_dir / "data" / "save" / "region_alias"
+        alias.symlink_to(real_region, target_is_directory=True)
+        with self.assertRaisesRegex(smoke.SmokeError, "must not be a symlink"):
+            self.validate(region="region_alias")
+
     def test_rejects_generated_worlds_and_unsafe_region_names(self):
         (self.save_dir / "world.sav").unlink()
         (self.save_dir / "world.dat").write_text("world only\n")
