@@ -37,7 +37,8 @@ steer the whole thing.
 [community blueprints](docs/FORT_BLUEPRINTS_RESEARCH.md) ·
 [settings audit](docs/settings-audit.md) ·
 [automation gaps & designs](docs/AUTOMATION-GAPS.md) ·
-[automation research](docs/automation-research.md)
+[automation research](docs/automation-research.md) ·
+[2026-10-31 repository review](docs/REVIEW-2026-10-31.md)
 
 **Jump to:**
 [Running it](#1-running-it) ·
@@ -315,8 +316,8 @@ save load without them:
 
 ## 8. Tests
 
-Dwarf Fortress cannot be run headlessly, so everything that can be checked
-without it, is:
+The standard test suite does not launch a live Dwarf Fortress instance. It
+checks the offline logic and the Python/Lua command wire format:
 
 ```bash
 ./tests/run_all.sh
@@ -335,6 +336,11 @@ popup.
 > file and send commands, and a running fortress will execute them — a test
 > nickname reached a real dwarf that way once. The Python suite sets
 > `ANTFARM_DF_DIR` to a scratch directory to make that impossible.
+>
+> DFHack 0.47.05 also exposes `dfhack-run` to external processes through its
+> local RPC listener, so a live-game smoke test is technically possible with a
+> disposable save and an already-running game. That harness is not part of CI
+> yet; do not confuse the offline suite with live-game qualification.
 
 ---
 
@@ -364,9 +370,14 @@ cd game && ./df -gen 1 RANDOM TOLKIEN_EPIC_MEDIUM
 ```
 
 > This world is deliberately hostile — 40 titans, 80 demons, night creatures and
-> werebeasts. There is no military automation, so an unattended fort here will
-> eventually lose. Turn the `*_NUMBER` and `*_CAP` values down for a fort that
-> survives long enough to finish building.
+> werebeasts. Antfarm has **partial military and defensive automation**:
+> `antfarm_defence` maintains entrance traps and restraints, `antfarm_lever`
+> can pull enrolled gates on dangerous events, and `antfarm_military` can enlist
+> into existing squads and tune training schedules. However, creating a squad
+> remains an explicit, high-risk operation pending live verification, and there
+> is no fully verified tactical response or burrow-evacuation policy. Do not
+> treat a hostile-world fort as siege-proof. Turn the `*_NUMBER` and `*_CAP`
+> values down for a fort that survives long enough to finish building.
 
 ---
 

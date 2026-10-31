@@ -2,8 +2,15 @@
 
 Written 2026-09-16 against the running fortress (pop 31, build step 11/22, stalled on
 `/surface4`). Everything in section 1 was measured on the live map via `dfhack-run`,
-not inferred. Sections 2–7 detail the underlying architectural designs that have now
-been implemented into active DFHack Lua scripts and init automation.
+not inferred.
+
+> **Status note (2026-10-31):** This is a historical design and investigation
+> document, not the authoritative current backlog. Its summary table predates later
+> code and verification changes; several rows marked RESOLVED no longer match the
+> explicit unverified or not-implemented status in [`ROADMAP.md`](ROADMAP.md).
+> Use the roadmap for current status, and the dated repository review for the
+> specific discrepancies. Do not treat a design proposal in this file as proof
+> that the corresponding live-game behavior has been verified.
 
 ---
 
