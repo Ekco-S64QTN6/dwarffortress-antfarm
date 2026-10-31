@@ -194,9 +194,11 @@ The Antfarm system provides a real-time file-based IPC bridge between DFHack (in
 | `antfarm/twitch.py` | Twitch chat bridge. |
 
 ### 5.2. Transport
-*   **State** (`game/antfarm_state.json`): written atomically (tmp + rename) every 200ms. Contains `protocol`, `map_loaded`, `mode`, `follow_id`, `fortress_stats` (pop, year, season, fps, paused), `unit_data` (full profile of the focused dwarf incl. skills, attributes, needs, thoughts, health, kills), `citizens` (roster with id, name, nick, claimed, profession, current_job, stress, pos, density), `announcements`, `probe_data`, and `build` (guided-construction progress).
+*   **State** (`game/antfarm_state.json`): written atomically (tmp + rename) every 200ms. Contains `protocol`, `map_loaded`, `mode`, `follow_id`, `fortress_stats` (pop, year, season, fps, paused), `unit_data` (full profile of the focused dwarf incl. skills, attributes, needs, thoughts, health, kills), `citizens` (roster with id, name, nick, claimed, profession, current_job, stress, pos, density), `announcements`, `probe_data`, `build` (guided-construction progress), and `subsystems` (cached subsystem reports plus `health`).
 
-    `build` is refreshed on a 10-second timer, not per frame: its gate check walks every map block on the fort's levels and would otherwise dominate the tick. Anything similarly expensive must be cached the same way.
+    `subsystems.health[name]` distinguishes `report_status` (`ok`, load/report/mapping/invalid/missing errors), `report_age_sec` (age of the last successful report), `report_error`, and `tick_error`. A missing numeric subsystem summary is not a healthy zero. The TUI displays failing and stale reporters.
+    
+    `build` is refreshed on a 10-second timer, not per frame: its gate check walks every map block on the fort's levels and would otherwise dominate the tick. The subsystem report/health map is refreshed every 25 seconds for the same reason: calling every report on every 200ms bridge tick would add avoidable map/item scans. Anything similarly expensive must be cached the same way.
 *   **Commands** (`game/antfarm_cmd/*.json`): **one command per file**, written tmp-then-rename, drained and deleted by the server each tick in lexical filename order. The client names them `%08d-<pid>.json` so the sort is the send order.
 
     A single shared command file **cannot** work here: the once-a-second heartbeat overwrites any queued command inside one 200ms tick, and chat can burst a dozen commands at once. The legacy single-file `antfarm_cmd.json` is still read for hand-written one-shots.
