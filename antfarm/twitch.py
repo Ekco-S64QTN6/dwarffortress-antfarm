@@ -72,6 +72,10 @@ def _load_config():
     return cfg
 
 
+class ClaimPersistenceError(RuntimeError):
+    """A claim change could not be committed to the on-disk registry."""
+
+
 class ClaimRegistry:
     """Maps a Twitch login to the dwarf they have claimed.
 
@@ -97,13 +101,30 @@ class ClaimRegistry:
             self.by_user = {}
 
     def _save(self):
+        """Persist the current mapping, returning False if the commit failed.
+
+        The rename keeps readers from seeing a partially-written JSON document.
+        Callers must still handle failure: reporting a claim change as successful
+        when only the in-memory mapping changed makes the bot and its restart
+        state disagree.
+        """
+        tmp = self.path + ".tmp"
         try:
-            tmp = self.path + ".tmp"
+            directory = os.path.dirname(os.path.abspath(self.path))
+            os.makedirs(directory, exist_ok=True)
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.by_user, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp, self.path)
+            return True
         except Exception as e:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
             logging.error(f"Twitch: could not save claims: {e}")
+            return False
 
     def get(self, user):
         with self.lock:
@@ -118,17 +139,37 @@ class ClaimRegistry:
         except (TypeError, ValueError):
             logging.error(f"Twitch: refusing claim for {user}: bad unit id {unit_id!r}")
             return False
+        user_key = user.lower()
         with self.lock:
-            self.by_user[user.lower()] = {"unit_id": unit_id, "name": dwarf_name, "ts": time.time()}
-            self._save()
+            had_previous = user_key in self.by_user
+            previous = self.by_user.get(user_key)
+            self.by_user[user_key] = {
+                "unit_id": unit_id, "name": dwarf_name, "ts": time.time()
+            }
+            if not self._save():
+                if had_previous:
+                    self.by_user[user_key] = previous
+                else:
+                    self.by_user.pop(user_key, None)
+                return False
         return True
 
     def release(self, user):
-        """Give up a claim. Returns the record that was released, or None."""
+        """Persist a release before returning the removed claim.
+
+        Raises ClaimPersistenceError and restores the in-memory claim when the
+        disk commit fails, so callers do not clear the in-game nickname either.
+        """
+        user_key = user.lower()
         with self.lock:
-            rec = self.by_user.pop(user.lower(), None)
-            if rec is not None:
-                self._save()
+            rec = self.by_user.pop(user_key, None)
+            if rec is None:
+                return None
+            if not self._save():
+                self.by_user[user_key] = rec
+                raise ClaimPersistenceError(
+                    f"could not persist the release for viewer {user_key}"
+                )
             return rec
 
     def count(self):
@@ -733,7 +774,14 @@ class TwitchBridge:
         another one: the claim file kept the dead dwarf forever and the only way
         out was to edit it by hand and restart.
         """
-        rec = self.claims.release(user)
+        try:
+            rec = self.claims.release(user)
+        except ClaimPersistenceError:
+            self.say(
+                f"@{user} I couldn't save your release; your claim is unchanged. "
+                "Please try again later."
+            )
+            return
         if not rec:
             self.say(f"@{user} you have not claimed a dwarf. Type !name to get one.")
             return
