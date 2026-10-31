@@ -23,13 +23,14 @@ assert_eq "" "$(antfarm_resolve_save "$saves")" "empty save root"
 mkdir -p "$saves/region1"
 : > "$saves/region1/world.dat"
 assert_eq "world|region1" "$(antfarm_resolve_save "$saves")" "single world"
+assert_eq "world|region1" "$(ANTFARM_REGION=region1 antfarm_resolve_save "$saves")" "explicit unique world"
 
 rm -rf "$saves/region1"
 mkdir -p "$saves/region2"
 : > "$saves/region2/world.sav"
 assert_eq "fort|region2" "$(antfarm_resolve_save "$saves")" "single fortress"
 
-# An explicit selection is deterministic even with multiple saves.
+# An explicit fortress selection is deterministic even with multiple saves.
 mkdir -p "$saves/region1"
 : > "$saves/region1/world.dat"
 assert_eq "fort|region2" "$(ANTFARM_REGION=region2 antfarm_resolve_save "$saves")" "explicit fort"
