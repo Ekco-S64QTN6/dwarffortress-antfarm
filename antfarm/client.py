@@ -6,6 +6,9 @@ import itertools
 import threading
 import logging
 
+STATE_PROTOCOL = 2
+
+
 class DFClient:
     def __init__(self, host="127.0.0.1", port=5080):
         self.host = host
@@ -178,36 +181,74 @@ class DFClient:
                         
                 time.sleep(0.2) # poll file every 200ms
                 
+    @staticmethod
+    def _validate_state_payload(payload):
+        """Validate the versioned Lua -> Python snapshot before publishing it.
+
+        The server emits the same required envelope both on the title screen
+        (map_loaded=false) and in a live fort. Optional subsystem details may be
+        absent while modules load, but the envelope itself must be trustworthy.
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("top-level JSON value must be an object")
+
+        protocol = payload.get("protocol")
+        if type(protocol) is not int:
+            raise ValueError("missing or non-integer protocol version")
+        if protocol != STATE_PROTOCOL:
+            raise ValueError(
+                f"unsupported state protocol {protocol}; expected {STATE_PROTOCOL}"
+            )
+        if not isinstance(payload.get("map_loaded"), bool):
+            raise ValueError("map_loaded must be a boolean")
+        if not isinstance(payload.get("fortress_stats"), dict):
+            raise ValueError("fortress_stats must be an object")
+
+        citizens = payload.get("citizens")
+        if not isinstance(citizens, list):
+            raise ValueError("citizens must be an array")
+        if any(not isinstance(citizen, dict) for citizen in citizens):
+            raise ValueError("each citizen entry must be an object")
+        if not isinstance(payload.get("announcements"), list):
+            raise ValueError("announcements must be an array")
+
+        for field in ("unit_data", "build", "subsystems", "ui"):
+            value = payload.get(field)
+            if value is not None and not isinstance(value, dict):
+                raise ValueError(f"{field} must be an object when present")
+        for field in ("probes", "ui_events"):
+            value = payload.get(field)
+            if value is not None and not isinstance(value, list):
+                raise ValueError(f"{field} must be an array when present")
+
+        return citizens
+
     def _process_state_json(self, json_str):
         try:
             payload = json.loads(json_str)
-            
-            citizens = payload.get("citizens") or []
-            if not isinstance(citizens, list):
-                # A JSON encoder that renders an empty list as {} would other-
-                # wise have every consumer iterating dict keys as if they were
-                # citizen records.
-                citizens = []
+            citizens = self._validate_state_payload(payload)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            logging.warning(f"Rejected Antfarm state payload: {e}")
+            return False
 
-            with self.lock:
-                self.latest_state = payload
-                self.citizens_list = citizens
-                
-            # Trigger state update callbacks
-            for cb in self.on_state_update_callbacks:
-                try:
-                    cb(payload)
-                except Exception as e:
-                    logging.error(f"Error in state callback: {e}")
-                    
-            # Trigger citizens update callbacks
-            for cb in self.on_citizens_update_callbacks:
-                try:
-                    cb(self.citizens_list)
-                except Exception as e:
-                    logging.error(f"Error in citizens callback: {e}")
-        except Exception as e:
-            logging.error(f"Error parsing state JSON: {e}")
+        with self.lock:
+            self.latest_state = payload
+            self.citizens_list = citizens
+
+        # Trigger state update callbacks
+        for cb in self.on_state_update_callbacks:
+            try:
+                cb(payload)
+            except Exception as e:
+                logging.error(f"Error in state callback: {e}")
+
+        # Trigger citizens update callbacks
+        for cb in self.on_citizens_update_callbacks:
+            try:
+                cb(citizens)
+            except Exception as e:
+                logging.error(f"Error in citizens callback: {e}")
+        return True
             
     def send_cmd(self, cmd_string):
         cmd_clean = cmd_string.strip()
