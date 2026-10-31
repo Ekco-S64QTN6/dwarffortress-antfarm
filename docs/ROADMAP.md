@@ -86,17 +86,19 @@ finding-by-finding review of the earlier report.
 7. **`Parse error: param job df.job`** appears during quickfort's startup config
    read. It is upstream quickfort, not ours, and appears harmless — but it has not
    been traced.
-8. **Disposable live-smoke capture is implemented but not yet run.** The
-   opt-in `tools/live_smoke.py` wrapper requires a copied fortress folder with
+8. **Disposable live-smoke capture is implemented in PR #16; offline CI
+   passed, but it has not yet been run against a live game.** The opt-in
+   `tools/live_smoke.py` wrapper requires a copied fortress folder with
    `world.sav`, an exact `.antfarm-disposable-save` marker, and two explicit
    operator confirmations. Its Lua probe calls only the read-only manager audit,
    quarters report and survival checklist report, then writes an aggregate-only
-   file under the DF installation root. Its path gates and report handling are
-   covered by no-game tests; an operator must still run it with the marked copy
-   loaded in DFHack before it can produce live evidence. The Lua probe uses
-   `dfhack.getSavePath()` to require that the running game is on the selected
-   region, in addition to the human confirmation. Offline tests also reject
-   symlinked save folders and save files. See [the live-smoke procedure](LIVE-SMOKE.md).
+   file under the DF installation root. The live probe uses
+   `dfhack.getSavePath()` to require an exact match with the selected region.
+   Offline CI covers its path gates, symlink rejection, loaded-map and
+   loaded-save identity checks, report parsing and Lua entrypoint allowlist.
+   An operator must still run it with a separately copied fortress loaded in
+   DFHack before it can produce live evidence. See
+   [the live-smoke procedure](LIVE-SMOKE.md).
 
 ### Cross-cutting hardening completed 2026-10-31
 
@@ -113,7 +115,7 @@ finding-by-finding review of the earlier report.
 | **High-risk checklist guidance** | The governance checklist no longer presents direct-memory squad creation as a routine fix; the operator is directed to a disposable fort and the roadmap's explicit risk note |
 | **Manager-order diagnosis** | `antfarm_orders audit` reports tri-state validation/activity flags, stalled jobs/unmet inputs, and manager office readiness (including the 20-citizen threshold); stub tests prove it does not write protected flags |
 | **Quarters furniture safety** | Furniture workorders omit the invalid material token, use the vendored `__reduce_amount` matcher to subtract equivalent open orders' `amount_left`, require `CR_OK` before reporting submission, and bed construction requires a free finished BED item; offline regressions guard these contracts |
-| **Disposable live-smoke runner** | Requires a marked `world.sav`, two operator confirmations, and an exact `dfhack.getSavePath()` match; only read-only reports run; offline safety tests pass, but no live run is claimed |
+| **Disposable live-smoke runner** | PR #16 merged; 11 fake-runner safety tests and full offline CI passed. Requires a marked `world.sav`, two operator confirmations, and exact `dfhack.getSavePath()` match; no live run is claimed |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
