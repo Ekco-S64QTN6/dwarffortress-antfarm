@@ -30,6 +30,7 @@ from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
 from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
                             TwitchBridge)                    # noqa: E402
+from antfarm.tui import format_subsystem_health              # noqa: E402
 
 
 class DreamfortCatalogue(unittest.TestCase):
@@ -73,6 +74,53 @@ class DreamfortCatalogue(unittest.TestCase):
             "PLAN references labels absent from dreamfort.csv",
         )
         self.assertTrue({"/setup", "/dig_all", "/central_stairs"}.issubset(steps))
+
+
+class SubsystemHealth(unittest.TestCase):
+    def test_all_reporters_healthy(self):
+        line = format_subsystem_health({
+            "health": {
+                "antfarm_orders": {"report_status": "ok", "report_age_sec": 12},
+                "antfarm_trade": {"report_status": "ok", "report_age_sec": 24},
+            }
+        })
+        self.assertIn("2/2 subsystem reports healthy", line)
+        self.assertIn("AUTOMATION:", line)
+
+    def test_report_and_tick_failures_are_visible_and_escaped(self):
+        line = format_subsystem_health({
+            "health": {
+                "antfarm_orders": {
+                    "report_status": "report_error",
+                    "report_error": "bad [field]",
+                },
+                "antfarm_trade": {
+                    "report_status": "ok",
+                    "report_age_sec": 4,
+                    "tick_error": "tick exploded",
+                },
+            }
+        })
+        self.assertIn("AUTOMATION WARN:", line)
+        self.assertIn("antfarm_orders", line)
+        self.assertIn("report_error", line)
+        self.assertIn("bad \\[field\\]", line)
+        self.assertIn("tick: tick exploded", line)
+
+    def test_last_successful_report_going_stale_is_visible(self):
+        line = format_subsystem_health({
+            "health": {
+                "antfarm_orders": {"report_status": "ok", "report_age_sec": 91},
+            }
+        })
+        self.assertIn("stale 91s", line)
+        self.assertIn("0/1 healthy", line)
+
+    def test_invalid_or_missing_health_is_not_reported_as_healthy(self):
+        self.assertIsNone(format_subsystem_health(None))
+        self.assertIsNone(format_subsystem_health({"health": {}}))
+        line = format_subsystem_health({"health": {"antfarm_orders": None}})
+        self.assertIn("invalid health record", line)
 
 
 class ClientProtocol(unittest.TestCase):
