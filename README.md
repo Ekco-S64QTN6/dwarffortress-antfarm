@@ -59,12 +59,28 @@ Start the game and the dashboard in either order — the dashboard waits for the
 game and picks it up automatically.
 
 ```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 cd game && ./dfhack      # terminal 1: the game
 ./.venv/bin/python -m antfarm.tui      # terminal 2: the dashboard
 ```
 
 The in-game bridge starts by itself when a save loads. Close the dashboard and
 the camera returns to you within five seconds.
+
+When more than one saved region is present, the one-button launcher refuses to
+guess which world or fortress to use. To continue a particular existing fort,
+select its save folder explicitly:
+
+```bash
+ANTFARM_REGION=region2 ./start_antfarm.sh
+```
+
+This selects an existing fortress through DFHack's `+load-save` path. Choosing
+a generated `world.dat` world among several saves is not yet automated; use the
+DF window's **Start Playing** list to choose that world manually. The launcher
+will not pretend that setting `ANTFARM_REGION` can steer a title-screen list it
+does not yet drive.
 
 Option 6 of `start_antfarm.sh` launches the bundled utilities — Dwarf Therapist,
 Legends Browser, SoundSense, Announcement Window — or run them directly from
