@@ -35,18 +35,20 @@ class LiveSmokeSafety(unittest.TestCase):
             "set -eu\n"
             "[ \"$1\" = antfarm_live_smoke ]\n"
             "[ \"$2\" ]\n"
+            "[ \"$3\" = region_test ]\n"
             "printf 'called\\n' >> runner.calls\n"
             "printf 'format=%s\\nrun_id=%s\\nmap_loaded=true\\n"
             "orders_status=ok\\nquarters_status=ok\\n"
-            "checklist_status=ok\\n' "
-            "'antfarm-live-smoke-v1' \"$2\" > "
+            "checklist_status=ok\\nloaded_save_matches=true\\n"
+            "loaded_save_folder=%s\\n' "
+            "'antfarm-live-smoke-v1' \"$2\" \"$3\" > "
             "antfarm_live_smoke_\"$2\".txt\n",
             encoding="utf-8",
         )
         runner.chmod(0o755)
         native_runner = self.df_dir / "hack" / "dfhack-run"
         native_runner.parent.mkdir(parents=True)
-        native_runner.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+        native_runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         native_runner.chmod(0o755)
         script = self.df_dir / smoke.LUA_SCRIPT
         script.parent.mkdir(parents=True)
@@ -102,7 +104,9 @@ class LiveSmokeSafety(unittest.TestCase):
 
     def test_runs_only_the_named_read_only_probe_and_checks_run_id(self):
         df_dir, _save_dir, runner = self.validate()
-        values, report = smoke.run_smoke(df_dir, runner, timeout_seconds=5)
+        values, report = smoke.run_smoke(
+            df_dir, runner, "region_test", timeout_seconds=5
+        )
         self.assertEqual(values["format"], smoke.REPORT_FORMAT)
         self.assertEqual(values["map_loaded"], "true")
         self.assertEqual(values["orders_status"], "ok")
@@ -116,7 +120,8 @@ class LiveSmokeSafety(unittest.TestCase):
             "#!/bin/sh\n"
             "set -eu\n"
             "printf 'format=antfarm-live-smoke-v1\\nrun_id=%s\\n"
-            "map_loaded=false\\n' \"$2\" > "
+            "map_loaded=false\\nloaded_save_matches=false\\n"
+            "loaded_save_folder=unknown\\n' \"$2\" > "
             "antfarm_live_smoke_\"$2\".txt\n",
             encoding="utf-8",
         )
@@ -128,7 +133,32 @@ class LiveSmokeSafety(unittest.TestCase):
         native_runner.chmod(0o755)
         df_dir, _save_dir, runner = self.validate()
         with self.assertRaisesRegex(smoke.SmokeError, "no fortress map is loaded"):
-            smoke.run_smoke(df_dir, runner, timeout_seconds=5)
+            smoke.run_smoke(df_dir, runner, "region_test", timeout_seconds=5)
+
+    def test_rejects_when_the_loaded_game_is_a_different_save_folder(self):
+        runner = self.df_dir / smoke.RUNNER_NAME
+        runner.write_text(
+            "#!/bin/sh\\n"
+            "set -eu\\n"
+            "printf 'format=antfarm-live-smoke-v1\\\\nrun_id=%s\\\\n"
+            "map_loaded=true\\\\nloaded_save_matches=false\\\\n"
+            "loaded_save_folder=region_primary\\\\n' \\"$2\\" > "
+            "antfarm_live_smoke_\\"$2\\".txt\\n",
+            encoding="utf-8",
+        )
+        runner.chmod(0o755)
+        df_dir, _save_dir, runner = self.validate()
+        with self.assertRaisesRegex(smoke.SmokeError, "not the selected disposable region"):
+            smoke.run_smoke(df_dir, runner, "region_test", timeout_seconds=5)
+
+    def test_refuses_a_symlinked_world_save(self):
+        world_save = self.save_dir / "world.sav"
+        world_save.unlink()
+        outside = Path(self.temp.name) / "world.sav"
+        outside.write_text("not the disposable save\\n", encoding="utf-8")
+        world_save.symlink_to(outside)
+        with self.assertRaisesRegex(smoke.SmokeError, "world.sav is required"):
+            self.validate()
 
     def test_live_probe_lua_uses_only_read_only_module_entrypoints(self):
         lua = (ROOT / "game" / smoke.LUA_SCRIPT).read_text(encoding="utf-8")
