@@ -229,7 +229,14 @@ local function manager_office_status()
     end
 
     local citizens = 0
-    for _, unit in ipairs(units) do
+    -- DF vectors are zero-indexed. Use numeric indices instead of ipairs(),
+    -- which is Lua-table-oriented and can skip element 0 in test doubles.
+    local ok_count, unit_count = pcall(function() return #units end)
+    if not ok_count then
+        return {status = 'unknown', detail = 'active unit count unavailable'}
+    end
+    for i = 0, unit_count - 1 do
+        local unit = units[i]
         local ok, is_citizen = pcall(function()
             return dfhack.units.isCitizen(unit)
         end)
@@ -292,7 +299,13 @@ local function manager_office_status()
     end
 
     local incomplete_scan = false
-    for _, building in ipairs(buildings) do
+    local ok_building_count, building_count = pcall(function() return #buildings end)
+    if not ok_building_count then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'building count unavailable'}
+    end
+    for i = 0, building_count - 1 do
+        local building = buildings[i]
         local ok_type, kind = pcall(function() return building:getType() end)
         if not ok_type then
             incomplete_scan = true
