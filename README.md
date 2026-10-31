@@ -339,24 +339,23 @@ checks the offline logic and the Python/Lua command wire format:
 ./tests/run_all.sh
 ```
 
-That covers Lua and Python syntax for every file, shell syntax for the
-launchers, and unit tests for the logic that has no business needing a game:
-the geology survey against synthetic strata, gate counting, blueprint step
-verification, the modal watchdog against a stubbed viewscreen stack, pause
-classification, interest scoring, plugin isolation and the chat command
-dispatcher. `tests/df_stub.lua` is a fake `df`/`dfhack` that records every
-simulated keystroke, so a test can assert *which key* the watchdog pressed at a
-popup.
+That covers Lua and Python syntax, shell syntax for the launchers, and unit
+tests for logic that has no business needing a game. The live-smoke launcher's
+safety gates are unit-tested with a fake `dfhack-run`; no live game is launched.
+`tests/df_stub.lua` is a fake `df`/`dfhack` that records every simulated
+keystroke, so a test can assert *which key* the watchdog pressed at a popup.
 
 > **Never point the suites at the live game directory.** They write a fake state
 > file and send commands, and a running fortress will execute them — a test
 > nickname reached a real dwarf that way once. The Python suite sets
 > `ANTFARM_DF_DIR` to a scratch directory to make that impossible.
 >
-> DFHack 0.47.05 also exposes `dfhack-run` to external processes through its
-> local RPC listener, so a live-game smoke test is technically possible with a
-> disposable save and an already-running game. That harness is not part of CI
-> yet; do not confuse the offline suite with live-game qualification.
+> DFHack 0.47.05 exposes `dfhack-run` to external processes through its local
+> RPC listener. The opt-in [disposable live-smoke procedure](docs/LIVE-SMOKE.md)
+> requires a manually marked copy of a fortress save, two explicit confirmations,
+> and an already-running game. It only runs read-only aggregate reports and is
+> not part of CI. A successful report is not live qualification of production,
+> construction or long-term survival.
 
 ---
 
