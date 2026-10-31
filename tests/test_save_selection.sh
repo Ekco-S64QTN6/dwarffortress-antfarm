@@ -40,7 +40,7 @@ assert_eq "world|region1" "$(ANTFARM_REGION=region1 antfarm_resolve_save "$saves
 if output="$(antfarm_resolve_save "$saves" 2>&1)"; then
     fail "ambiguous selection unexpectedly succeeded: $output"
 fi
-[[ "$output" == *"region1|world"* && "$output" == *"region2|fort"* ]] \
+[[ "$output" == *"world|region1"* && "$output" == *"fort|region2"* ]] \
     || fail "ambiguity message did not name every candidate: $output"
 
 # Invalid values cannot escape the save root or select arbitrary folders.
