@@ -57,8 +57,9 @@ are cheap to fix and were being ignored for twenty of the build's twenty-two ste
 
 `antfarm_quarters orders` submits workshop manager-order targets; it does not
 produce finished items immediately. It uses the vendored DFHack 0.47
-`workorder.lua` `__reduce_amount` matcher, which subtracts existing matching
-orders' `amount_left` before creating any remaining quantity. The code reports a
+`workorder.lua` `__reduce_amount` matcher, which subtracts equivalent open
+orders' `amount_left` from the requested target before creating any remaining
+quantity. The code reports a
 target as submitted only when `dfhack.run_command()` returns `CR_OK`.
 `antfarm_quarters beds` schedules bed construction only when a free, finished BED
 item exists. Logs are a carpentry input, not the finished bed consumed by the
