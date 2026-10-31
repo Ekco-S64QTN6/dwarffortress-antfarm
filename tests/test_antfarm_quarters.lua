@@ -24,6 +24,10 @@ local function fresh(population)
     }
     w.df.item_type.BED = 12
     w.df.item_type.WOOD = 13
+    w.df.job_type.ConstructBed = 21
+    w.df.job_type.ConstructDoor = 22
+    w.df.job_type.ConstructChest = 23
+    w.df.job_type.ConstructCabinet = 24
     w.df.global.world.buildings = {all = stub.vector{}}
     w.df.global.world.items = {all = stub.vector{}}
     for i = 1, population do w.add_citizen(i, 8, 8, 10) end
@@ -57,7 +61,16 @@ do
     local w, env = fresh(3)
     local calls = {}
     w.dfhack.run_command = function(...)
-        calls[#calls + 1] = {...}
+        local call = {...}
+        calls[#calls + 1] = call
+        if call[1] == 'workorder' then
+            local job = (call[2] or ''):match('"job":"([^"]+)"')
+            local amount = tonumber((call[2] or ''):match('"amount_total":(%d+)'))
+            w.df.global.world.manager_orders:push({
+                job_type = w.df.job_type[job],
+                amount_left = amount,
+            })
+        end
         return 0
     end
 
@@ -89,6 +102,39 @@ do
     check('each order targets the expected job and amount',
           jobs.ConstructBed and jobs.ConstructDoor
           and jobs.ConstructChest and jobs.ConstructCabinet)
+
+    local queued_again = env.queue_furniture()
+    check('a second pass does not duplicate outstanding furniture orders',
+          #queued_again == 0 and #calls == 4,
+          ('queued=%d calls=%d'):format(#queued_again, #calls))
+end
+
+-- An existing partial order reduces only that job's requested quantity.
+do
+    local w, env = fresh(3)
+    w.df.global.world.manager_orders:push({
+        job_type = w.df.job_type.ConstructBed,
+        amount_left = 1,
+    })
+    local calls = {}
+    w.dfhack.run_command = function(...)
+        calls[#calls + 1] = {...}
+        return 0
+    end
+
+    local queued = env.queue_furniture()
+    local bed_amount, other_amounts = nil, 0
+    for _, call in ipairs(calls) do
+        local json = call[2] or ''
+        local job = json:match('"job":"([^"]+)"')
+        local amount = tonumber(json:match('"amount_total":(%d+)'))
+        if job == 'ConstructBed' then bed_amount = amount
+        else other_amounts = other_amounts + (amount or 0) end
+    end
+    check('partial pending bed order is subtracted from new bed order',
+          bed_amount == 2, tostring(bed_amount))
+    check('unrelated furniture orders retain their full target',
+          other_amounts == 9, tostring(other_amounts))
 end
 
 -- A log is a workshop input, not the finished bed item consumed by the build
