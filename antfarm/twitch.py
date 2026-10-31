@@ -19,6 +19,7 @@ Run standalone against a live fortress:
 """
 
 import concurrent.futures
+from collections import OrderedDict
 import json
 import logging
 import os
@@ -46,6 +47,8 @@ RATE_LIMIT_MESSAGES = 18
 RATE_LIMIT_WINDOW = 30.0
 
 USER_COOLDOWN = 8.0        # seconds between commands from one viewer
+USER_COOLDOWN_PRUNE_INTERVAL = 15.0
+MAX_USER_COOLDOWN_ENTRIES = 2048
 CAMERA_COOLDOWN = 20.0     # seconds between camera grabs from chat, globally
 OVERRIDE_SECONDS = 45.0    # how long a viewer holds the camera
 
@@ -262,7 +265,10 @@ class TwitchBridge:
 
         self._send_times = []
         self._send_lock = threading.Lock()
-        self._user_last_cmd = {}
+        # Ordered and capped so one-off chat logins cannot grow this registry
+        # for the lifetime of a long-running stream.
+        self._user_last_cmd = OrderedDict()
+        self._next_user_cooldown_prune = 0.0
         self._last_camera_grab = 0.0
 
         self.poll = None
@@ -521,11 +527,30 @@ class TwitchBridge:
         )
 
     def _cooldown_ok(self, user):
-        now = time.time()
-        last = self._user_last_cmd.get(user.lower(), 0)
-        if now - last < USER_COOLDOWN:
+        """Enforce per-viewer cooldowns with bounded, opportunistic cleanup."""
+        now = time.monotonic()
+        if now >= self._next_user_cooldown_prune:
+            cutoff = now - USER_COOLDOWN
+            expired = [
+                login for login, timestamp in self._user_last_cmd.items()
+                if timestamp <= cutoff
+            ]
+            for login in expired:
+                self._user_last_cmd.pop(login, None)
+            self._next_user_cooldown_prune = (
+                now + USER_COOLDOWN_PRUNE_INTERVAL
+            )
+
+        login = user.lower()
+        last = self._user_last_cmd.get(login)
+        if last is not None and now - last < USER_COOLDOWN:
+            self._user_last_cmd.move_to_end(login)
             return False
-        self._user_last_cmd[user.lower()] = now
+
+        self._user_last_cmd[login] = now
+        self._user_last_cmd.move_to_end(login)
+        while len(self._user_last_cmd) > MAX_USER_COOLDOWN_ENTRIES:
+            self._user_last_cmd.popitem(last=False)
         return True
 
     def say(self, text):
