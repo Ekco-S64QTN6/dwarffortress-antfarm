@@ -8,6 +8,7 @@ happily execute commands a test writes into the real spool -- AGENTS.md section
 6.5 records a test nickname ending up on a real dwarf that way.
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -21,12 +22,97 @@ os.environ.pop("ANTFARM_AUTOBUILD", None)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from antfarm.client import DFClient                         # noqa: E402
 from antfarm.engine import AntfarmEngine                    # noqa: E402
 from antfarm.event_engine import EventBus, EventEngine       # noqa: E402
 from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
 from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
                             TwitchBridge)                    # noqa: E402
+
+
+class ClientProtocol(unittest.TestCase):
+    def setUp(self):
+        self.client = DFClient()
+        self.states = []
+        self.rosters = []
+        self.client.add_state_callback(self.states.append)
+        self.client.add_citizens_callback(self.rosters.append)
+
+    @staticmethod
+    def valid_payload(**updates):
+        payload = {
+            "protocol": 2,
+            "map_loaded": False,
+            "fortress_stats": {
+                "pop": 0, "year": 0, "season": "Spring",
+                "fps": 0, "paused": True,
+            },
+            "citizens": [],
+            "announcements": [],
+            "mode": "idle",
+        }
+        payload.update(updates)
+        return payload
+
+    def test_accepts_the_title_screen_snapshot(self):
+        self.assertTrue(self.client._process_state_json(
+            json.dumps(self.valid_payload())
+        ))
+        self.assertEqual(self.client.latest_state["map_loaded"], False)
+        self.assertEqual(self.rosters, [[]])
+        self.assertEqual(len(self.states), 1)
+
+    def test_accepts_a_live_fort_snapshot(self):
+        citizen = {"id": 17, "name": "Urist"}
+        payload = self.valid_payload(
+            map_loaded=True,
+            fortress_stats={"pop": 1, "year": 1, "season": "Spring",
+                            "fps": 50, "paused": False},
+            citizens=[citizen],
+            unit_data=citizen,
+            build={"step": 1, "total": 22},
+            subsystems={},
+            ui={"screen": "dwarfmode"},
+            ui_events=[],
+            probes=[citizen],
+        )
+        self.assertTrue(self.client._process_state_json(json.dumps(payload)))
+        self.assertEqual(self.client.citizens_list, [citizen])
+
+    def test_rejects_unknown_protocol_without_replacing_good_state(self):
+        good = self.valid_payload()
+        self.assertTrue(self.client._process_state_json(json.dumps(good)))
+        previous = self.client.latest_state
+        self.assertFalse(self.client._process_state_json(
+            json.dumps(self.valid_payload(protocol=99))
+        ))
+        self.assertIs(self.client.latest_state, previous)
+        self.assertEqual(len(self.states), 1)
+
+    def test_rejects_malformed_envelopes(self):
+        bad_payloads = [
+            [],
+            self.valid_payload(protocol=True),
+            self.valid_payload(map_loaded="false"),
+            self.valid_payload(fortress_stats=[]),
+            self.valid_payload(citizens={}),
+            self.valid_payload(citizens=[None]),
+            self.valid_payload(announcements={}),
+            self.valid_payload(build=[]),
+            self.valid_payload(ui_events={}),
+        ]
+        for payload in bad_payloads:
+            with self.subTest(payload=payload):
+                self.assertFalse(self.client._process_state_json(
+                    json.dumps(payload)
+                ))
+        self.assertIsNone(self.client.latest_state)
+        self.assertEqual(self.states, [])
+
+    def test_rejects_invalid_json(self):
+        self.assertFalse(self.client._process_state_json('{"protocol":'))
+        self.assertIsNone(self.client.latest_state)
 
 
 class FakeClient:
@@ -403,6 +489,35 @@ class ChatDispatch(unittest.TestCase):
         self.assertNotIn("token", self.bridge.cfg)
         self.assertEqual(self.bridge._token, "oauth:x")
         self.assertTrue(self.bridge.configured())
+
+    def test_user_cooldowns_expire_and_use_monotonic_time(self):
+        with mock.patch("antfarm.twitch.time.monotonic",
+                        side_effect=[100.0, 101.0, 109.0]):
+            self.assertTrue(self.bridge._cooldown_ok("Viewer"))
+            self.assertFalse(self.bridge._cooldown_ok("viewer"))
+            self.assertTrue(self.bridge._cooldown_ok("VIEWER"))
+
+    def test_user_cooldown_registry_prunes_expired_logins(self):
+        from collections import OrderedDict
+        self.bridge._user_last_cmd = OrderedDict([
+            ("expired", 10.0),
+            ("recent", 95.0),
+        ])
+        self.bridge._next_user_cooldown_prune = 0.0
+        with mock.patch("antfarm.twitch.time.monotonic", return_value=100.0):
+            self.assertTrue(self.bridge._cooldown_ok("new"))
+        self.assertNotIn("expired", self.bridge._user_last_cmd)
+        self.assertIn("recent", self.bridge._user_last_cmd)
+
+    def test_user_cooldown_registry_has_a_hard_size_limit(self):
+        from antfarm.twitch import MAX_USER_COOLDOWN_ENTRIES
+        with mock.patch("antfarm.twitch.time.monotonic", return_value=100.0):
+            for i in range(MAX_USER_COOLDOWN_ENTRIES + 100):
+                self.bridge._cooldown_ok(f"viewer-{i}")
+        self.assertEqual(
+            len(self.bridge._user_last_cmd), MAX_USER_COOLDOWN_ENTRIES
+        )
+        self.assertNotIn("viewer-0", self.bridge._user_last_cmd)
 
     def test_a_mod_only_command_does_not_burn_a_viewer_cooldown(self):
         """F-03: !director charged the cooldown then silently did nothing."""
