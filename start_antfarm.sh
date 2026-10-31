@@ -17,8 +17,8 @@ PY="$BASE_DIR/.venv/bin/python"
 STATE="$BASE_DIR/game/antfarm_state.json"
 
 # Create the pinned Python runtime on first use. The game can still start when
-# Python is unavailable, but the dashboard/bridge must not be launched with a
-# missing interpreter or missing Textual dependencies.
+# Python is unavailable, but the dashboard/Twitch client must not be launched
+# with a missing interpreter or missing Textual dependencies.
 prepare_python() {
     local candidate=""
     local py_version='import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'
