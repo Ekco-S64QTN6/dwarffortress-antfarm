@@ -60,12 +60,11 @@ class DreamfortCatalogue(unittest.TestCase):
         self.assertEqual(len(steps), 22, "update the expected Dreamfort plan size deliberately")
         self.assertEqual(len(steps), len(set(steps)), "build plan contains duplicate labels")
 
-        # Dreamfort uses both #meta (most blueprints) and #config (/setup)
-        # labels; /central_stairs and /dig_all are meta-blueprints, not CSV
-        # filenames. Match the actual Quickfort labels rather than searching
-        # for a misleading substring anywhere in the CSV text.
+        # Quickfort labels belong to different categories (#meta, #config,
+        #dig, #build, #place, #zone, #query). Exclude #notes, which labels
+        # walkthrough documentation rather than executable blueprints.
         labels = set(re.findall(
-            r"#(?:meta|config)\s+label\(([^)]+)\)",
+            r"#(?!notes\\b)[A-Za-z0-9_-]+\\s+label\\(([^)]+)\\)",
             catalogue,
         ))
         missing = sorted({step.lstrip("/") for step in steps} - labels)
