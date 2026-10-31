@@ -622,6 +622,21 @@ saves under the 'start game' menu) are currently not supported."*
 `antfarm_worlds` lists every world on disk and says which menu each one is
 under; run it on the title screen and it also dumps DF's own `start_savegames`.
 
+**Launcher safety rule:** `start_antfarm.sh` must never choose the first
+`game/data/save/*/` match when more than one region exists. The shared resolver
+in `tools/lib/antfarm_saves.sh` returns an explicit ambiguity error; the user
+can set `ANTFARM_REGION=regionN` to continue one existing fortress through
+`+load-save`. That override may select a `world.dat` save only when it is the
+sole candidate. With multiple generated worlds, the current title-screen driver
+cannot select `viewscreen_titlest.start_savegames` by folder name, so startup
+must stop and the operator must choose manually from **Start Playing**. Do not
+"fix" this by using `load-save` for inactive saves; DFHack 0.47 explicitly
+does not support it.
+
+The no-game regression is `tests/test_save_selection.sh`, which uses a
+temporary directory. The Dreamfort plan/catalogue contract lives in
+`tests/test_engine.py` and is run by `./tests/run_all.sh`.
+
 ### 6.9. Gate Each Build Step On Its Own Level, Not The Whole Fort
 
 The guided build originally gated every `dig` step on "no outstanding
