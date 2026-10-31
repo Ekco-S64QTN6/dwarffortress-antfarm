@@ -137,6 +137,22 @@ do
           other_amounts == 9, tostring(other_amounts))
 end
 
+-- If the order vector is unreadable, the script skips queueing rather than
+-- treating unknown pending demand as zero and creating another batch.
+do
+    local w, env = fresh(2)
+    local calls = 0
+    w.df.global.world.manager_orders = setmetatable({}, {
+        __len = function() error('manager order vector unavailable') end,
+    })
+    w.dfhack.run_command = function() calls = calls + 1; return 0 end
+    local queued, detail = env.queue_furniture()
+    check('unknown pending-order state fails closed', #queued == 0 and calls == 0,
+          ('queued=%d calls=%d'):format(#queued, calls))
+    check('unknown order state is reported as skipped safely',
+          tostring(detail):find('skipped safely:', 1, true) ~= nil, tostring(detail))
+end
+
 -- A log is a workshop input, not the finished bed item consumed by the build
 -- menu. The placer must do nothing until a free BED item exists.
 do
