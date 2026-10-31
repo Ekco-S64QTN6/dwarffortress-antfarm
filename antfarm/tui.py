@@ -154,6 +154,27 @@ def format_subsystem_health(subsystems, stale_after=75.0):
     )
 
 
+def format_manager_order_status(orders):
+    """Describe manager-order validation states without implying a cause."""
+    if not isinstance(orders, dict):
+        return None
+
+    def count(name):
+        value = orders.get(name, 0)
+        return value if type(value) is int and value >= 0 else 0
+
+    unvalidated = count("unvalidated")
+    unknown = count("validation_unknown")
+    if unvalidated == 0 and unknown == 0:
+        return None
+
+    return (
+        f"[bold #FFC857]MANAGER ORDERS:[/] "
+        f"{count('total')} total; {count('validated')} validated; "
+        f"{unvalidated} not validated; {unknown} status unknown"
+    )
+
+
 def render_progress_bar(value, max_value, width=15, color="cyan"):
     if max_value <= 0:
         return "░" * width
@@ -390,6 +411,10 @@ class HeaderWidget(Static):
                 f"{orders.get('unvalidated', 0)} not validated; "
                 f"{orders.get('validation_unknown', 0)} unknown"
             )
+
+        orders_line = format_manager_order_status((subsystems or {}).get("orders"))
+        if orders_line:
+            stats_line += f"\n{orders_line}"
 
         subsystem_line = format_subsystem_health(subsystems)
         if subsystem_line:
