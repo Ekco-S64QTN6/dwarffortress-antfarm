@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 _SCRATCH = tempfile.mkdtemp(prefix="antfarm-test-")
 os.environ["ANTFARM_DF_DIR"] = _SCRATCH
@@ -24,7 +25,8 @@ from antfarm.engine import AntfarmEngine                    # noqa: E402
 from antfarm.event_engine import EventBus, EventEngine       # noqa: E402
 from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
-from antfarm.twitch import ClaimRegistry, TwitchBridge       # noqa: E402
+from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
+                            TwitchBridge)                    # noqa: E402
 
 
 class FakeClient:
@@ -324,6 +326,41 @@ class Claims(unittest.TestCase):
         self.assertIsNone(self.reg.get("viewer"))
         self.assertTrue(self.reg.set("viewer", 2, "Kadol"))
 
+    def test_claims_survive_a_registry_restart(self):
+        self.assertTrue(self.reg.set("viewer", 42, "Urist"))
+        restarted = ClaimRegistry(path=self.path)
+        self.assertEqual(restarted.get("viewer")["unit_id"], 42)
+
+    def test_failed_set_rolls_back_memory_and_keeps_the_previous_disk_state(self):
+        self.assertTrue(self.reg.set("viewer", 1, "Urist"))
+        with mock.patch("antfarm.twitch.os.replace",
+                        side_effect=OSError("read-only filesystem")):
+            self.assertFalse(self.reg.set("viewer", 2, "Kadol"))
+
+        self.assertEqual(self.reg.get("viewer")["unit_id"], 1)
+        restarted = ClaimRegistry(path=self.path)
+        self.assertEqual(restarted.get("viewer")["unit_id"], 1)
+        self.assertFalse(os.path.exists(self.path + ".tmp"))
+
+    def test_failed_new_set_does_not_leave_a_phantom_claim(self):
+        with mock.patch("antfarm.twitch.os.replace",
+                        side_effect=OSError("disk full")):
+            self.assertFalse(self.reg.set("viewer", 42, "Urist"))
+        self.assertIsNone(self.reg.get("viewer"))
+        self.assertFalse(os.path.exists(self.path + ".tmp"))
+
+    def test_failed_release_restores_the_claim_and_raises(self):
+        self.assertTrue(self.reg.set("viewer", 1, "Urist"))
+        with mock.patch("antfarm.twitch.os.replace",
+                        side_effect=OSError("read-only filesystem")):
+            with self.assertRaises(ClaimPersistenceError):
+                self.reg.release("viewer")
+
+        self.assertEqual(self.reg.get("viewer")["unit_id"], 1)
+        restarted = ClaimRegistry(path=self.path)
+        self.assertEqual(restarted.get("viewer")["unit_id"], 1)
+        self.assertFalse(os.path.exists(self.path + ".tmp"))
+
     def test_count_does_not_reach_into_the_dict(self):
         self.reg.set("a", 1, "A")
         self.reg.set("b", 2, "B")
@@ -390,6 +427,16 @@ class ChatDispatch(unittest.TestCase):
     def test_probe_falls_back_to_the_single_slot(self):
         self.client.latest_state = {"probe_data": {"id": 5, "name": "Five"}}
         self.assertEqual(self.bridge._probe(5, timeout=0.3)["name"], "Five")
+
+    def test_unclaim_does_not_clear_the_nickname_when_persistence_fails(self):
+        self.bridge.claims.set("viewer", 3, "Urist")
+        with mock.patch("antfarm.twitch.os.replace",
+                        side_effect=OSError("disk full")):
+            self.bridge.cmd_unclaim("viewer", "", {})
+
+        self.assertEqual(self.bridge.claims.get("viewer")["unit_id"], 3)
+        self.assertNotIn("nick 3 ", " | ".join(self.client.commands))
+        self.assertTrue(any("claim is unchanged" in line for line in self.sent))
 
     def test_unclaim_clears_the_in_game_nickname_too(self):
         self.bridge.claims.set("viewer", 3, "Urist")
