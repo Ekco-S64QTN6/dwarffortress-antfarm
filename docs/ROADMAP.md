@@ -28,12 +28,18 @@ finding-by-finding review of the earlier report.
 
 ### Found and not yet fixed
 
-1. **Furniture cannot be placed before it is made.** `place_beds()` in
-   `antfarm_quarters` calls `constructBuilding` for beds; with no bed *items* in
-   the fort DF cancels the job and the building vanishes. It reported "placed 7
-   bed(s)" while creating none. The chain is: manager order → carpenter makes a
-   bed item → *then* place it. The module needs to queue the order and only place
-   when items exist.
+1. **Furniture-order / bed-placement safety — implementation in PR #13; CI
+   pending, not live-fort verified.** `antfarm_quarters` now omits the invalid
+   category token `"material":"INORGANIC"` from workorder JSON, so DFHack 0.47's
+   workorder tool can select a valid material. It counts existing manager-order
+   `amount_left` before queuing another batch, preventing the 10-minute tick from
+   multiplying duplicate orders while production is delayed. Bed construction is
+   now attempted only when a free, finished `df.item_type.BED` exists; logs alone
+   are not treated as a finished bed. Status text says "queued" rather than
+   claiming a bed was placed. Offline regression tests cover valid JSON,
+   deduplication, reserved/forbidden items, and the no-finished-bed case.
+   The actual manager validation/production chain and completed rooms still need
+   verification on a disposable live fort.
 2. **Work orders were not issuing at all.** 61 manager orders, every one
    `status.validated = false`, and no jobs at the still or carpenter — so no beds,
    no booze, nothing. Cause not established. The manager was appointed and had no
@@ -93,6 +99,7 @@ finding-by-finding review of the earlier report.
 | **Subsystem health telemetry** | The Lua bridge distinguishes module-load, report, mapping and tick failures, retains last-success age, and the dashboard surfaces unhealthy/stale modules instead of silently omitting them |
 | **High-risk checklist guidance** | The governance checklist no longer presents direct-memory squad creation as a routine fix; the operator is directed to a disposable fort and the roadmap's explicit risk note |
 | **Manager-order diagnosis** | `antfarm_orders audit` reports tri-state validation/activity flags, stalled jobs/unmet inputs, and manager office readiness (including the 20-citizen threshold); stub tests prove it does not write protected flags |
+| **Quarters furniture safety** | Furniture workorders omit the invalid generic material token, include outstanding `amount_left` in batch planning, and bed construction requires a free finished BED item; offline regressions guard the sequence |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
@@ -246,11 +253,15 @@ AUTOMATION-GAPS §11 is unimplemented.
 
 ### 3.8. Housing at scale
 
-`antfarm_quarters` defines and assigns beds and queues furniture, but it cannot
-**place** furniture in the dug apartment rooms — that is Dreamfort's
-`/apartments2` and `/apartments3`, steps 18 and 21. With the build stalled at 11,
-53 of 59 citizens still have no bedroom. Unsticking the build is the real fix;
-the module only covers beds that already exist.
+`antfarm_quarters` is an interim survival path, not a replacement for Dreamfort's
+full apartment phases. It queues manager workorders for beds, doors, chests and
+cabinets, avoids duplicating quantities already present in matching manager
+orders, and only queues a bed building when a free finished BED item exists. It
+can place that bed in already-dug indoor floor and define/assign existing beds as
+rooms. It does not yet prove that the full furniture set is completed, that every
+room has correct extents/quality, or that the manager's workorders actually issue.
+Dreamfort's `/apartments2` and `/apartments3` remain the curated housing phases
+(steps 18 and 21). Live verification on a disposable fort is still required.
 
 ### 3.9. Phase 4 blueprint swap
 
