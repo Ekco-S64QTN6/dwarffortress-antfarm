@@ -152,8 +152,9 @@ launch_all() {
     local selection state region
     if ! selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save"); then
         echo "Antfarm: refusing to guess which saved world/fortress to launch."
-        echo "Choose explicitly with ANTFARM_REGION=<save-folder>, for example:"
+        echo "To continue a specific existing fortress, choose its folder explicitly:"
         echo "  ANTFARM_REGION=region2 ./start_antfarm.sh"
+        echo "For a generated world among multiple saves, select it manually from DF's Start Playing menu."
         return 2
     fi
     if [ -z "$selection" ]; then
