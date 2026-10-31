@@ -106,6 +106,11 @@ This split is the thing worth internalising, and it has moved:
 re-run their CLI) and folds their reports into the state file. Adding a subsystem means: a module
 with `tick()`/`report()`, a `reqscript` in the server's poll, and a key in `collect_state()`.
 
+The state snapshot's `subsystems.health` map is the health contract for those projections:
+each reporter publishes a report status and the age of its last successful report, while tick
+exceptions are reported separately. The TUI flags missing, failing and stale reports; a zero or
+absent subsystem value must never be interpreted as proof that the automation module is healthy.
+
 ### The watchdog (`antfarm_ui.lua`)
 
 The single most load-bearing component, because the thing that stops an unattended fort is a dialog
