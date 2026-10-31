@@ -236,6 +236,43 @@ function assign_beds()
     return done
 end
 
+-- Outstanding orders count toward the requested quantity. The bridge calls
+-- this every ten minutes; without this check a slow/unvalidated manager would
+-- receive another full batch each pass, multiplying duplicate furniture orders.
+-- If the order vector or a matching order's amount cannot be read, fail closed
+-- for that furniture type rather than risk adding another duplicate.
+local function pending_order_amount(job_name)
+    local job_type = df.job_type[job_name]
+    if job_type == nil then
+        return nil, 'job type is unavailable: ' .. tostring(job_name)
+    end
+    local ok_orders, orders = pcall(function()
+        return df.global.world.manager_orders
+    end)
+    if not ok_orders or not orders then
+        return nil, 'manager order list is unavailable'
+    end
+    local ok_count, count = pcall(function() return #orders end)
+    if not ok_count then return nil, 'manager order count is unavailable' end
+
+    local pending = 0
+    for i = 0, count - 1 do
+        local order = orders[i]
+        local ok_match, matches = pcall(function()
+            return order.job_type == job_type
+        end)
+        if not ok_match then return nil, 'could not inspect a manager order' end
+        if matches then
+            local ok_amount, remaining = pcall(function() return order.amount_left end)
+            if not ok_amount or type(remaining) ~= 'number' then
+                return nil, 'could not read remaining amount for ' .. tostring(job_name)
+            end
+            pending = pending + math.max(0, remaining)
+        end
+    end
+    return pending
+end
+
 -- Queue the furniture the fort is short of.
 
 function queue_furniture()
@@ -248,16 +285,23 @@ function queue_furniture()
         local have = ({
             beds = h.beds, doors = h.doors, chests = h.chests, cabinets = h.cabinets,
         })[item.name] or 0
-        local want = math.max(0, math.min(batch, h.citizens - have))
-        if want > 0 then
-            -- Omit "material": DFHack 0.47's workorder parser expects a
+        local target = math.max(0, math.min(batch, h.citizens - have))
+        local pending, pending_error = pending_order_amount(item.job)
+        if pending == nil then
+            table.insert(queued, ('skipped %s (cannot safely inspect pending orders: %s)')
+                :format(item.name, tostring(pending_error)))
+        else
+            local want = math.max(0, target - pending)
+            if want > 0 then
+                -- Omit "material": DFHack 0.47's workorder parser expects a
             -- complete material id (e.g. INORGANIC:IRON), not the category
             -- token "INORGANIC". With no material field it deliberately lets
             -- the workshop choose a valid material for this furniture job.
-            local ok = pcall(dfhack.run_command, 'workorder',
-                ('{"job":"%s","amount_total":%d}'):format(item.job, want))
-            if ok then
-                table.insert(queued, ('%d %s'):format(want, item.name))
+                local ok = pcall(dfhack.run_command, 'workorder',
+                    ('{"job":"%s","amount_total":%d}'):format(item.job, want))
+                if ok then
+                    table.insert(queued, ('%d %s'):format(want, item.name))
+                end
             end
         end
     end
