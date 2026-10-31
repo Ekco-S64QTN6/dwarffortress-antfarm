@@ -138,14 +138,22 @@ do
 end
 
 do
-    check('manager office is required at 20 citizens',
-          office_fixture(19, -1, nil).status == 'not_required')
+    local below_threshold = office_fixture(19, -1, nil)
+    local vacant_manager = office_fixture(20, -1, nil)
+    local missing_office = office_fixture(20, 500, nil)
+    local owned_office = office_fixture(20, 500, 1)
+    check('manager office is not required below 20 citizens',
+          below_threshold.status == 'not_required',
+          tostring(below_threshold.status) .. ' ' .. tostring(below_threshold.detail))
     check('missing manager assignment is reported separately',
-          office_fixture(20, -1, nil).status == 'manager_missing')
+          vacant_manager.status == 'manager_missing',
+          tostring(vacant_manager.status) .. ' ' .. tostring(vacant_manager.detail))
     check('missing manager chair-room is detected',
-          office_fixture(20, 500, nil).status == 'missing')
+          missing_office.status == 'missing',
+          tostring(missing_office.status) .. ' ' .. tostring(missing_office.detail))
     check('manager-owned chair-room satisfies the office check',
-          office_fixture(20, 500, 1).status == 'present')
+          owned_office.status == 'present',
+          tostring(owned_office.status) .. ' ' .. tostring(owned_office.detail))
 end
 
 do
