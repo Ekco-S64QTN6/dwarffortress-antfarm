@@ -89,12 +89,13 @@ required module report.
 ## What this does not prove
 
 A successful report means the three read-only report paths executed against a
-loaded map. It does **not** prove a manager order will validate, that the
-carpenter will produce furniture, that a construction will complete, that beds
-will become properly assigned bedrooms, or that the fortress survives over
-time. Those require a separately controlled live test with observations before
-and after each intentionally mutating action. Do not turn this probe into an
-automatic repair or add it to CI.
+loaded map. The recorded 2026-10-31 run found all four existing manager orders
+validated; it does **not** prove future or newly queued orders will validate,
+that the carpenter will produce furniture, that a construction will complete,
+that beds will become properly assigned bedrooms, or that the fortress survives
+over time. Those require a separately controlled live test with observations
+before and after each intentionally mutating action. Do not turn this probe into
+an automatic repair or add it to CI.
 
 
 ## Recorded live validation — 2026-10-31
