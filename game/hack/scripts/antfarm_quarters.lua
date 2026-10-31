@@ -246,7 +246,7 @@ end
 function queue_furniture()
     local h = housing()
     local short = math.max(0, h.citizens - h.beds)
-    local queued, skipped = {}, {}
+    local submitted, skipped = {}, {}
     for _, item in ipairs(PER_ROOM) do
         local have = ({
             beds = h.beds, doors = h.doors, chests = h.chests, cabinets = h.cabinets,
@@ -263,7 +263,7 @@ function queue_furniture()
                 :format(item.job, target)
             local ok, result = pcall(dfhack.run_command, 'workorder', json)
             if ok and result == CR_OK then
-                table.insert(queued, ('%d %s target'):format(target, item.name))
+                table.insert(submitted, ('%d %s target'):format(target, item.name))
             else
                 local reason = ok and ('command result ' .. tostring(result))
                     or tostring(result)
@@ -279,7 +279,7 @@ function queue_furniture()
     if #skipped > 0 then
         detail = detail .. '; skipped safely: ' .. table.concat(skipped, ', ')
     end
-    return queued, detail
+    return submitted, detail
 end
 
 -- ---------------------------------------------------------------- --
@@ -297,10 +297,10 @@ function tick()
     -- Queue the workshop orders first; they produce the finished furniture
     -- items that the building menu consumes. Assign only the beds that existed
     -- at the start of this pass, then queue constructions from free BED items.
-    local okq, queued, queue_detail = pcall(queue_furniture)
-    if okq and type(queued) == 'table' and #queued > 0 then
+    local okq, submitted, queue_detail = pcall(queue_furniture)
+    if okq and type(submitted) == 'table' and #submitted > 0 then
         table.insert(antfarm_quarters_state.notes, 1,
-            'queued furniture orders: ' .. table.concat(queued, ', '))
+            'submitted furniture order targets: ' .. table.concat(submitted, ', '))
     end
     if okq and type(queue_detail) == 'string'
             and queue_detail:find('skipped safely:', 1, true) then
@@ -355,10 +355,10 @@ elseif verb == 'beds' then
     print('antfarm_quarters: ' .. tostring(why))
     for _, m in ipairs(made) do print('antfarm_quarters: ' .. m) end
 elseif verb == 'orders' then
-    local queued, why = queue_furniture()
+    local submitted, why = queue_furniture()
     print('antfarm_quarters: ' .. tostring(why))
-    if #queued > 0 then
-        print('antfarm_quarters: queued ' .. table.concat(queued, ', '))
+    if #submitted > 0 then
+        print('antfarm_quarters: submitted order targets ' .. table.concat(submitted, ', '))
     end
 else
     local h = housing()
