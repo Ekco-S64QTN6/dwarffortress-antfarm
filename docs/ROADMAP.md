@@ -44,7 +44,7 @@ finding-by-finding review of the earlier report.
    of it.
 
    A new **read-only** diagnostic is now available:
-   `game/dfhack-run antfarm_orders audit`. It reports the current validated /
+   `cd game && ./dfhack-run antfarm_orders audit`. It reports the current validated /
    unvalidated / unknown and active / inactive / unknown counts, plus impossible
    orders, stalled jobs and unmet job-item requirements. It reads the status bits
    but never writes them. Capture this output before changing the manager, office,
