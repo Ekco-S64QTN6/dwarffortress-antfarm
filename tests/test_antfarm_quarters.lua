@@ -1,0 +1,178 @@
+-- Regression tests for furniture production/placement ordering in antfarm_quarters.
+--
+-- Run: lua tests/test_antfarm_quarters.lua (from repository root)
+
+local stub = dofile('tests/df_stub.lua')
+local QUARTERS = 'game/hack/scripts/antfarm_quarters.lua'
+
+local pass, fail = 0, 0
+local function check(name, ok, detail)
+    if ok then
+        pass = pass + 1
+        print('  ok    ' .. name)
+    else
+        fail = fail + 1
+        print(('  FAIL  %s%s'):format(name, detail and (' -- ' .. tostring(detail)) or ''))
+    end
+end
+
+local function fresh(population)
+    local w = stub.new()
+    w.df.building_type = {
+        Bed = 1, Door = 2, Box = 3, Cabinet = 4,
+        Table = 5, Chair = 6, Coffin = 7,
+    }
+    w.df.item_type.BED = 12
+    w.df.item_type.WOOD = 13
+    w.df.global.world.buildings = {all = stub.vector{}}
+    w.df.global.world.items = {all = stub.vector{}}
+    for i = 1, population do w.add_citizen(i, 8, 8, 10) end
+    local env = stub.load(w, QUARTERS)
+    return w, env
+end
+
+local function floor_block(w)
+    local block = {tiletype = {}, designation = {}}
+    local floor = w.tt(w.df.tiletype_material.STONE, w.df.tiletype_shape.FLOOR)
+    for x = 0, 15 do
+        block.tiletype[x], block.designation[x] = {}, {}
+        for y = 0, 15 do
+            block.tiletype[x][y] = floor
+            block.designation[x][y] = {
+                outside = false,
+                dig = w.df.tile_dig_designation.No,
+                flow_size = 0,
+            }
+        end
+    end
+    return block
+end
+
+print('antfarm_quarters')
+
+-- The DFHack 0.47 workorder command interprets an explicit "material" as a
+-- concrete matinfo id. A category label such as "INORGANIC" is not one. Leave
+-- material unspecified so the workshop picks a valid material for the job.
+do
+    local w, env = fresh(3)
+    local calls = {}
+    w.dfhack.run_command = function(...)
+        calls[#calls + 1] = {...}
+        return 0
+    end
+
+    local queued, why = env.queue_furniture()
+    check('queues all four furniture work orders', #queued == 4,
+          tostring(#queued) .. ' / ' .. tostring(why))
+    check('workorder command invoked four times', #calls == 4, tostring(#calls))
+
+    local jobs = {
+        ConstructBed = false,
+        ConstructDoor = false,
+        ConstructChest = false,
+        ConstructCabinet = false,
+    }
+    local valid_json = true
+    for _, call in ipairs(calls) do
+        local json = call[2] or ''
+        if call[1] ~= 'workorder' or json:find('"material"') then
+            valid_json = false
+        end
+        for job in pairs(jobs) do
+            if json:find('"job":"' .. job .. '"', 1, true)
+                    and json:find('"amount_total":3', 1, true) then
+                jobs[job] = true
+            end
+        end
+    end
+    check('orders omit the invalid INORGANIC material token', valid_json)
+    check('each order targets the expected job and amount',
+          jobs.ConstructBed and jobs.ConstructDoor
+          and jobs.ConstructChest and jobs.ConstructCabinet)
+end
+
+-- A log is a workshop input, not the finished bed item consumed by the build
+-- menu. The placer must do nothing until a free BED item exists.
+do
+    local w, env = fresh(2)
+    local constructions = 0
+    local block = floor_block(w)
+    w.dfhack.maps.getTileBlock = function() return block end
+    w.dfhack.buildings = {
+        findAtTile = function() return nil end,
+        constructBuilding = function()
+            constructions = constructions + 1
+            return {}
+        end,
+    }
+    w.scripts = {
+        antfarm_blueprint = {
+            plan_summary = function()
+                return {anchor = {x = 8, y = 8}, levels = {farming = 10}}
+            end,
+        },
+    }
+    env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+
+    w.df.global.world.items.all:push({
+        getType = function() return w.df.item_type.WOOD end,
+        flags = {forbid = false, in_job = false, in_building = false},
+    })
+
+    local messages, why = env.place_beds()
+    check('logs alone do not trigger bed construction',
+          constructions == 0, tostring(constructions))
+    check('missing finished beds are reported honestly',
+          #messages == 0 and tostring(why):find('finished bed items', 1, true) ~= nil,
+          tostring(why))
+end
+
+-- Reserved and forbidden finished beds are not available. One unreserved BED
+-- item permits exactly one queued construction.
+do
+    local w, env = fresh(2)
+    local constructions = {}
+    local block = floor_block(w)
+    w.dfhack.maps.getTileBlock = function() return block end
+    w.dfhack.buildings = {
+        findAtTile = function() return nil end,
+        constructBuilding = function(spec)
+            constructions[#constructions + 1] = spec
+            return {}
+        end,
+    }
+    w.scripts = {
+        antfarm_blueprint = {
+            plan_summary = function()
+                return {anchor = {x = 8, y = 8}, levels = {farming = 10}}
+            end,
+        },
+    }
+    env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+
+    w.df.global.world.items.all:push({
+        getType = function() return w.df.item_type.BED end,
+        flags = {forbid = true, in_job = false, in_building = false},
+    })
+    w.df.global.world.items.all:push({
+        getType = function() return w.df.item_type.BED end,
+        flags = {forbid = false, in_job = true, in_building = false},
+    })
+    w.df.global.world.items.all:push({
+        getType = function() return w.df.item_type.BED end,
+        flags = {forbid = false, in_job = false, in_building = false},
+    })
+
+    local messages, why = env.place_beds()
+    check('only the free finished bed item is used',
+          #constructions == 1, tostring(#constructions))
+    check('result says queued, not already placed',
+          #messages == 1 and messages[1]:find('queued 1 bed construction', 1, true) ~= nil,
+          messages[1] or tostring(why))
+    check('construction targets the dug indoor floor',
+          constructions[1] and constructions[1].type == w.df.building_type.Bed
+          and constructions[1].pos.x >= 0)
+end
+
+print(('%d passed, %d failed'):format(pass, fail))
+if fail > 0 then error(('%d antfarm_quarters tests failed'):format(fail)) end
