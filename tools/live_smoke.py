@@ -84,7 +84,8 @@ def validate_target(
         raise SmokeError(f"save root or selected region does not exist: {exc}") from exc
     if save_dir.parent != save_root or not save_dir.is_dir():
         raise SmokeError("selected region is not a direct folder under data/save")
-    if not (save_dir / "world.sav").is_file():
+    world_save = save_dir / "world.sav"
+    if world_save.is_symlink() or not world_save.is_file():
         raise SmokeError(
             f"{region} is not an existing fortress save (world.sav is required); "
             "generated world.dat files are not accepted"
