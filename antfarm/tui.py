@@ -133,7 +133,7 @@ def format_subsystem_health(subsystems, stale_after=75.0):
                 problems.append(f"stale {int(age)}s")
 
         if problems:
-            detail = escape(", ".join(problems))[:110]
+            detail = escape(", ".join(problems)[:100])
             issues.append(f"{name} ({detail})")
         else:
             healthy += 1
