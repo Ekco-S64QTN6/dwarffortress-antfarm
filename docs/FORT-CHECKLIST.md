@@ -72,8 +72,19 @@ assign four miners on an embark carrying two picks, and the surplus stand still.
 | Check | Passes when | Fixed by |
 | :-- | :-- | :-- |
 | key officers appointed | manager, bookkeeper, broker, chief medical dwarf all filled | `antfarm_nobles appoint` |
-| military exists | at least one squad | `antfarm_military create` then `enlist` |
+| military exists | at least one squad | **Manual / high risk:** inspect with `antfarm_military status`; create a squad only on a disposable test fort after reviewing [the roadmap warning](ROADMAP.md#the-one-to-be-careful-with). |
 | justice | a sheriff (or captain) and somewhere to hold a prisoner | `antfarm_nobles appoint` (the jail is still unimplemented) |
+
+### Governance safety note
+
+The `military exists` check is read-only, but squad creation is not a routine
+automatic repair. `antfarm_military create` constructs DF 0.47 squad structures
+directly and remains unverified on a live fort. Do not run it against the
+operator's primary save or from an unattended checklist response. Review
+[`ROADMAP.md`](ROADMAP.md#the-one-to-be-careful-with) and use a disposable test
+fort for the first creation attempt. Once a squad has been verified in the
+in-game military screen, ordinary enlistment/schedule tuning can be assessed
+separately.
 
 ### Health
 
