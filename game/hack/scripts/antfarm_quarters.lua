@@ -297,10 +297,15 @@ function queue_furniture()
                 -- complete material id (e.g. INORGANIC:IRON), not the category
                 -- token "INORGANIC". With no material field it deliberately lets
                 -- the workshop choose a valid material for this furniture job.
-                local ok = pcall(dfhack.run_command, 'workorder',
+                local ok, result = pcall(dfhack.run_command, 'workorder',
                     ('{"job":"%s","amount_total":%d}'):format(item.job, want))
-                if ok then
+                if ok and result == CR_OK then
                     table.insert(queued, ('%d %s'):format(want, item.name))
+                else
+                    local reason = ok and ('command result ' .. tostring(result))
+                        or tostring(result)
+                    table.insert(skipped, ('%s (workorder command failed: %s)')
+                        :format(item.name, reason))
                 end
             end
         end
