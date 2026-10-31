@@ -41,7 +41,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install textual rich
+          .venv/bin/python -m pip install -r requirements.txt
 
       - name: Run the repository test suite
         run: ./tests/run_all.sh
