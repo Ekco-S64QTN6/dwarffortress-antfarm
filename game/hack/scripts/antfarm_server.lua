@@ -641,6 +641,7 @@ local function subsystems_summary()
             active = rep.active or 0,
             inactive = rep.inactive or 0,
             activity_unknown = rep.activity_unknown or 0,
+            manager_office = rep.manager_office or {status = 'not_checked'},
             impossible = arr(rep.impossible or {}),
         }
     end)

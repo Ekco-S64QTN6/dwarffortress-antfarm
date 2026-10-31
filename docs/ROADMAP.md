@@ -51,10 +51,12 @@ finding-by-finding review of the earlier report.
    work-order definitions or labour assignments. The
    [DF 0.47.05 Manager reference](https://dwarffortresswiki.org/index.php/DF2014:Manager#Work_orders)
    says that at 20+ citizens the manager must visit their office to validate
-   orders. A missing/unassigned office is therefore a strong hypothesis for a
-   mature fort, but the population and office state at the time of the original
-   61-order capture were not preserved; keep the diagnosis open until the audit
-   is run on that save.
+   orders. The audit now independently checks whether the manager's assigned
+   historical figure owns a defined chair-room, reporting `present`,
+   `missing`, `manager_missing`, `not_required` (below 20 citizens), or
+   `unknown`. A missing office is a strong hypothesis for a mature fort, but the
+   population and office state at the time of the original 61-order capture were
+   not preserved; keep the diagnosis open until the audit is run on that save.
 3. **I crashed the fort chasing that.** Writing `status.validated`/`status.active`
    across the order list segfaulted DF silently — no error, no core, nothing in
    the log. Recorded as AGENTS.md 6.1.12: read those bits, never write them. The

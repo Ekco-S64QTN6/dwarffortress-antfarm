@@ -18,6 +18,37 @@ local function check(name, ok, detail)
     end
 end
 
+local function office_fixture(population, manager_histfig, chair_owner)
+    local w = stub.new()
+    w.scripts = {
+        antfarm_nobles = {
+            positions = function()
+                return {MANAGER = {histfig = manager_histfig}}
+            end,
+        },
+    }
+    w.df.building_type = {Chair = 99}
+    w.df.historical_figure = {
+        find = function(id)
+            if id ~= manager_histfig then return nil end
+            return {unit_id = 1}
+        end,
+    }
+    for i = 1, population do
+        w.add_citizen(i, 1, 1, 1)
+    end
+    w.df.global.world.buildings = {all = stub.vector{}}
+    if chair_owner ~= nil then
+        w.df.global.world.buildings.all:push({
+            owner_id = chair_owner,
+            is_room = true,
+            getType = function() return 99 end,
+        })
+    end
+    local env = stub.load(w, ORDERS)
+    return env.audit().manager_office
+end
+
 local function read_only_status(values, unreadable)
     local writes = {count = 0}
     local status = setmetatable({}, {
@@ -93,6 +124,8 @@ do
               c.active, c.inactive, c.activity_unknown))
     check('audit includes stalled-job and unmet-input counts',
           c.stalled_jobs == 0 and c.unmet_requirements == 0)
+    check('office is not required before 20 citizens',
+          result.manager_office.status == 'not_required')
 end
 
 do
@@ -102,6 +135,25 @@ do
           and r.validation_unknown == 1)
     check('report exports active-state counts',
           r.active == 2 and r.inactive == 1 and r.activity_unknown == 0)
+end
+
+do
+    local below_threshold = office_fixture(19, -1, nil)
+    local vacant_manager = office_fixture(20, -1, nil)
+    local missing_office = office_fixture(20, 500, nil)
+    local owned_office = office_fixture(20, 500, 1)
+    check('manager office is not required below 20 citizens',
+          below_threshold.status == 'not_required',
+          tostring(below_threshold.status) .. ' ' .. tostring(below_threshold.detail))
+    check('missing manager assignment is reported separately',
+          vacant_manager.status == 'manager_missing',
+          tostring(vacant_manager.status) .. ' ' .. tostring(vacant_manager.detail))
+    check('missing manager chair-room is detected',
+          missing_office.status == 'missing',
+          tostring(missing_office.status) .. ' ' .. tostring(missing_office.detail))
+    check('manager-owned chair-room satisfies the office check',
+          owned_office.status == 'present',
+          tostring(owned_office.status) .. ' ' .. tostring(owned_office.detail))
 end
 
 do

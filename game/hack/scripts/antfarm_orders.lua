@@ -220,9 +220,119 @@ end
 -- Read-only audit of manager-order state and blocked production jobs.
 -- This is deliberately separate from reap()/unstick(): it never calls a DF
 -- command, changes an order, or assigns to status.validated/status.active.
+local function manager_office_status()
+    local ok_units, units = pcall(function()
+        return df.global.world.units.active
+    end)
+    if not ok_units or not units then
+        return {status = 'unknown', detail = 'active unit list unavailable'}
+    end
+
+    local citizens = 0
+    -- DF vectors are zero-indexed. Use numeric indices instead of ipairs(),
+    -- which is Lua-table-oriented and can skip element 0 in test doubles.
+    local ok_count, unit_count = pcall(function() return #units end)
+    if not ok_count then
+        return {status = 'unknown', detail = 'active unit count unavailable'}
+    end
+    for i = 0, unit_count - 1 do
+        local unit = units[i]
+        local ok, is_citizen = pcall(function()
+            return dfhack.units.isCitizen(unit)
+        end)
+        if not ok then
+            return {status = 'unknown', citizens = citizens,
+                    detail = 'could not classify active units'}
+        end
+        if is_citizen then citizens = citizens + 1 end
+    end
+
+    -- In DF 0.47, manager validation requires an office once the fort reaches
+    -- 20 dwarves. A small fort can legitimately have unvalidated orders while
+    -- the office requirement is not yet active.
+    if citizens < 20 then
+        return {status = 'not_required', citizens = citizens}
+    end
+
+    local ok_nobles, nobles = pcall(reqscript, 'antfarm_nobles')
+    if not ok_nobles or type(nobles) ~= 'table'
+            or type(nobles.positions) ~= 'function' then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'nobles position data unavailable'}
+    end
+
+    local ok_positions, positions = pcall(nobles.positions)
+    if not ok_positions or type(positions) ~= 'table' then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'could not read noble positions'}
+    end
+    local manager = positions.MANAGER
+    if not manager then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'manager position not exposed'}
+    end
+    if manager.histfig == nil or manager.histfig == -1 then
+        return {status = 'manager_missing', citizens = citizens,
+                detail = 'manager position is vacant'}
+    end
+
+    local ok_hf, hf = pcall(function()
+        return df.historical_figure.find(manager.histfig)
+    end)
+    if not ok_hf or not hf or not hf.unit_id or hf.unit_id == -1 then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'manager historical figure has no active unit'}
+    end
+    local ok_unit, unit = pcall(function() return df.unit.find(hf.unit_id) end)
+    if not ok_unit or not unit then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'manager unit could not be resolved'}
+    end
+
+    local ok_chair, chair_type = pcall(function() return df.building_type.Chair end)
+    local ok_buildings, buildings = pcall(function()
+        return df.global.world.buildings.all
+    end)
+    if not ok_chair or chair_type == nil or not ok_buildings or not buildings then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'building data unavailable'}
+    end
+
+    local incomplete_scan = false
+    local ok_building_count, building_count = pcall(function() return #buildings end)
+    if not ok_building_count then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'building count unavailable'}
+    end
+    for i = 0, building_count - 1 do
+        local building = buildings[i]
+        local ok_type, kind = pcall(function() return building:getType() end)
+        if not ok_type then
+            incomplete_scan = true
+        elseif kind == chair_type then
+            local ok_room, is_room = pcall(function() return building.is_room end)
+            local ok_owner, owner_id = pcall(function() return building.owner_id end)
+            if not ok_room or not ok_owner then
+                incomplete_scan = true
+            elseif is_room and owner_id == unit.id then
+                return {status = 'present', citizens = citizens,
+                        detail = 'manager owns a defined chair-room'}
+            end
+        end
+    end
+
+    if incomplete_scan then
+        return {status = 'unknown', citizens = citizens,
+                detail = 'could not inspect every building'}
+    end
+    return {status = 'missing', citizens = citizens,
+            detail = 'no defined chair-room is owned by the manager'}
+end
+
 function audit()
     local rows = scan()
     local counts = order_flag_counts(rows)
+    local office = manager_office_status()
     local jobs = stalled_jobs()
     local unmet = 0
     for _, job in ipairs(jobs) do
@@ -235,7 +345,7 @@ function audit()
     end
     counts.stalled_jobs = #jobs
     counts.unmet_requirements = unmet
-    return {counts = counts, orders = rows, jobs = jobs}
+    return {counts = counts, orders = rows, jobs = jobs, manager_office = office}
 end
 
 -- Escalating remedies for a fort that cannot finish a construction. Ordered
@@ -311,6 +421,8 @@ function report()
         active = counts.active,
         inactive = counts.inactive,
         activity_unknown = counts.activity_unknown,
+        manager_office = (counts.unvalidated > 0 or counts.validation_unknown > 0)
+            and manager_office_status() or {status = 'not_checked'},
         impossible = impossible,
         notes = antfarm_orders_state.notes,
     }
@@ -343,6 +455,10 @@ elseif verb == 'audit' or verb == 'diagnose' then
         :format(c.active, c.inactive, c.activity_unknown, c.impossible))
     print(('  stalled jobs=%d, unmet job requirements=%d')
         :format(c.stalled_jobs, c.unmet_requirements))
+    local office = result.manager_office or {status = 'unknown'}
+    print(('  manager office: %s (%s citizen(s))')
+        :format(office.status, tostring(office.citizens or '?')))
+    if office.detail then print('    ' .. office.detail) end
     local shown = 0
     for _, row in ipairs(result.orders) do
         if row.validated ~= true or row.active == nil or row.impossible then

@@ -69,9 +69,10 @@ assign four miners on an embark carrying two picks, and the surplus stand still.
 
 For manager-order stalls, run `cd game && ./dfhack-run antfarm_orders audit` before
 changing the manager, office, order definitions or labour assignments. This is
-read-only and prints validation/activity counts plus stalled jobs and unmet
-items. DF 0.47 has crashed when writing `status.validated`/`status.active`;
-the audit only reads those flags. Do not turn it into an automatic repair.
+read-only and prints validation/activity counts, the manager's chair-room office
+status (required at 20+ citizens), stalled jobs and unmet items. DF 0.47 has
+crashed when writing `status.validated`/`status.active`; the audit only reads
+those flags. Do not turn it into an automatic repair.
 
 ### Governance
 

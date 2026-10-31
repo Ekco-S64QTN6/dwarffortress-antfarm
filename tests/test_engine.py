@@ -122,6 +122,22 @@ class ManagerOrderDiagnostics(unittest.TestCase):
         })
         self.assertIn("2 status unknown", line)
 
+    def test_dashboard_reports_missing_manager_office_at_the_twenty_dwarf_threshold(self):
+        line = format_manager_order_status({
+            "total": 61, "validated": 0, "unvalidated": 61,
+            "validation_unknown": 0,
+            "manager_office": {"status": "missing", "citizens": 59},
+        })
+        self.assertIn("manager office missing at 59 citizens", line)
+
+    def test_dashboard_reports_a_vacant_manager_position(self):
+        line = format_manager_order_status({
+            "total": 2, "validated": 0, "unvalidated": 2,
+            "validation_unknown": 0,
+            "manager_office": {"status": "manager_missing", "citizens": 22},
+        })
+        self.assertIn("manager position vacant", line)
+
     def test_dashboard_is_quiet_when_all_order_states_are_known_and_validated(self):
         self.assertIsNone(format_manager_order_status({
             "total": 4, "validated": 4, "unvalidated": 0,
