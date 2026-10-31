@@ -76,6 +76,34 @@ class DreamfortCatalogue(unittest.TestCase):
         self.assertTrue({"/setup", "/dig_all", "/central_stairs"}.issubset(steps))
 
 
+class HighRiskGuidance(unittest.TestCase):
+    def test_fort_checklist_does_not_recommend_unverified_squad_creation_casually(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script = os.path.join(
+            root, "game", "hack", "scripts", "antfarm_checklist.lua"
+        )
+        guide = os.path.join(root, "docs", "FORT-CHECKLIST.md")
+        with open(script, encoding="utf-8") as f:
+            lua = f.read()
+        with open(guide, encoding="utf-8") as f:
+            docs = f.read()
+
+        match = re.search(
+            r"name = 'military exists',\s*fix = '([^']+)'",
+            lua,
+        )
+        self.assertIsNotNone(match, "military check must retain a fix explanation")
+        self.assertIn("HIGH RISK / MANUAL", match.group(1))
+        self.assertIn("disposable fort", match.group(1))
+        self.assertIn("docs/ROADMAP.md", match.group(1))
+        self.assertIn("disposable test fort", docs)
+        self.assertNotIn(
+            "| military exists | at least one squad | "
+            "`antfarm_military create` then `enlist` |",
+            docs,
+        )
+
+
 class SubsystemHealth(unittest.TestCase):
     def test_all_reporters_healthy(self):
         line = format_subsystem_health({
