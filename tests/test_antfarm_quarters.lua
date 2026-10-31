@@ -28,9 +28,16 @@ local function fresh(population)
     w.df.job_type.ConstructDoor = 22
     w.df.job_type.ConstructChest = 23
     w.df.job_type.ConstructCabinet = 24
-    w.df.global.world.buildings = {all = stub.vector{}}
-    w.df.global.world.items = {all = stub.vector{}}
-    for i = 1, population do w.add_citizen(i, 8, 8, 10) end
+    -- These functions use ipairs(). The DF stub's vector is deliberately
+    -- 0-indexed and is used for manager_orders below; provide ordinary Lua
+    -- arrays for the collections this module walks with ipairs().
+    w.df.global.world.buildings = {all = {}}
+    w.df.global.world.items = {all = {}}
+    local active = {}
+    for i = 1, population do
+        table.insert(active, w.add_citizen(i, 8, 8, 10))
+    end
+    w.df.global.world.units.active = active
     local env = stub.load(w, QUARTERS)
     return w, env
 end
@@ -161,7 +168,7 @@ end
 do
     local w, env = fresh(3)
     for i = 1, 3 do
-        w.df.global.world.buildings.all:push({
+        table.insert(w.df.global.world.buildings.all, {
             getType = function() return w.df.building_type.Bed end,
             owner_id = i,
             is_room = true,
@@ -214,7 +221,7 @@ do
         },
     }
     env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
-    w.df.global.world.items.all:push({
+    table.insert(w.df.global.world.items.all, {
         getType = function() return w.df.item_type.BED end,
         flags = {forbid = false, in_job = false, in_building = false},
     })
@@ -257,7 +264,7 @@ do
     }
     env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
 
-    w.df.global.world.items.all:push({
+    table.insert(w.df.global.world.items.all, {
         getType = function() return w.df.item_type.WOOD end,
         flags = {forbid = false, in_job = false, in_building = false},
     })
@@ -293,15 +300,15 @@ do
     }
     env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
 
-    w.df.global.world.items.all:push({
+    table.insert(w.df.global.world.items.all, {
         getType = function() return w.df.item_type.BED end,
         flags = {forbid = true, in_job = false, in_building = false},
     })
-    w.df.global.world.items.all:push({
+    table.insert(w.df.global.world.items.all, {
         getType = function() return w.df.item_type.BED end,
         flags = {forbid = false, in_job = true, in_building = false},
     })
-    w.df.global.world.items.all:push({
+    table.insert(w.df.global.world.items.all, {
         getType = function() return w.df.item_type.BED end,
         flags = {forbid = false, in_job = false, in_building = false},
     })
