@@ -23,16 +23,6 @@ antfarm_list_saved_regions() {
         if [ -f "$directory/world.sav" ]; then
             printf 'fort|%s\n' "$region"
         elif [ -f "$directory/world.dat" ]; then
-            local -a candidates=()
-            while IFS= read -r candidate; do
-                [ -n "$candidate" ] && candidates+=("$candidate")
-            done < <(antfarm_list_saved_regions "$save_root")
-            if [ "${#candidates[@]}" -gt 1 ]; then
-                printf 'ANTFARM_REGION=%s is a generated world, but multiple worlds are on disk.\n' "$region" >&2
-                printf 'The launcher cannot select an entry in DFHack title-screen start_savegames yet.\n' >&2
-                printf 'Choose the generated world manually from Start Playing, or select a fortress with ANTFARM_REGION.\n' >&2
-                return 2
-            fi
             printf 'world|%s\n' "$region"
         fi
     done
@@ -55,6 +45,15 @@ antfarm_resolve_save() {
             printf 'fort|%s\n' "$region"
             return 0
         elif [ -f "$directory/world.dat" ]; then
+            while IFS= read -r candidate; do
+                [ -n "$candidate" ] && candidates+=("$candidate")
+            done < <(antfarm_list_saved_regions "$save_root")
+            if [ "${#candidates[@]}" -gt 1 ]; then
+                printf 'ANTFARM_REGION=%s is a generated world, but multiple worlds are on disk.\n' "$region" >&2
+                printf 'The launcher cannot select an entry in DFHack title-screen start_savegames yet.\n' >&2
+                printf 'Choose the generated world manually from Start Playing, or select a fortress with ANTFARM_REGION.\n' >&2
+                return 2
+            fi
             printf 'world|%s\n' "$region"
             return 0
         fi
@@ -63,8 +62,8 @@ antfarm_resolve_save() {
         return 2
     fi
 
-    while IFS= read -r region; do
-        [ -n "$region" ] && candidates+=("$region")
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] && candidates+=("$candidate")
     done < <(antfarm_list_saved_regions "$save_root")
 
     case "${#candidates[@]}" in
@@ -79,7 +78,7 @@ antfarm_resolve_save() {
         *)
             printf 'Multiple saved worlds/fortresses found under %s:' "$save_root" >&2
             printf ' %s' "${candidates[@]}" >&2
-            printf '\nSet ANTFARM_REGION=<save-folder> to select one explicitly.\n' >&2
+            printf '\nSet ANTFARM_REGION=<save-folder> to select an existing fortress explicitly.\n' >&2
             return 2
             ;;
     esac
