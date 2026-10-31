@@ -292,7 +292,10 @@ show_status() {
         # The path is passed in rather than assumed: this function is safe to
         # call from anywhere, not just with the repo root as the working
         # directory.
-        "$PY" - "$STATE" <<'PY'
+        local status_py="$PY"
+        [ -x "$status_py" ] || status_py=$(command -v python3 || true)
+        if [ -n "$status_py" ]; then
+            "$status_py" - "$STATE" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1]))
 st = s.get("fortress_stats", {})
@@ -329,6 +332,9 @@ if u:
     if u.get("pending_popups"):
         print(f"  BLOCKED    : {u['pending_popups']} popup(s) waiting")
 PY
+        else
+            echo "  (Python 3 is unavailable; status details omitted)"
+        fi
     else
         echo "IPC state file: absent - is a save loaded?"
         echo "  The bridge starts from dfhack-config/init/onMapLoad.init;"
