@@ -49,6 +49,20 @@ cd game && nohup ./dfhack &                  # launch
 Script `print()` output lands in `game/stderr.log`, **not** the terminal. Note that
 `./dfhack-run` prints ANSI escapes; strip them before parsing.
 
+For an aggregate-only live capture, follow [docs/LIVE-SMOKE.md](docs/LIVE-SMOKE.md).
+It requires a copied disposable fortress with the exact `.antfarm-disposable-save`
+marker, and both `--confirm-disposable` and `--confirm-loaded-save` flags:
+
+```bash
+python3 tools/live_smoke.py --df-dir "/absolute/path/to/Dwarf Fortress" \
+  --region region_smoke --confirm-disposable --confirm-loaded-save
+```
+
+The DFHack game must already be running with that copied region loaded. This
+probe calls only `antfarm_orders.audit()`, `antfarm_quarters.report()` and
+`antfarm_checklist.report()`; it never invokes the command-line repair or
+construction verbs. It is not part of CI.
+
 **Never point the test suites at `game/`.** They write a fake state file and send commands, and a
 running fortress will execute them. `tests/test_engine.py` and `test_wire.py` set `ANTFARM_DF_DIR`
 to a scratch directory for exactly this reason.
