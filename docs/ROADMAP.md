@@ -70,6 +70,11 @@ finding-by-finding review of the earlier report.
 | :-- | :-- |
 | **Automated offline test gate** | `.github/workflows/tests.yml` runs `./tests/run_all.sh` on pushes and pull requests; the first workflow run passed |
 | **Twitch claim persistence** | `ClaimRegistry` rolls back failed writes, fails closed on malformed JSON, preserves the damaged file, and keeps the in-game nickname intact when a release cannot be saved; regression tests pass in CI |
+| **IPC contract validation** | Python rejects malformed or unknown protocol-2 snapshots without overwriting the last valid state; title-screen/live-fort and rejection cases pass in CI |
+| **Bounded Twitch cooldowns** | Per-viewer cooldowns use monotonic time, expire opportunistically, and fail closed at a 2,048-login cap rather than evicting active viewers |
+| **Save-selection safety** | The launcher refuses ambiguous save folders; a single fort can be selected explicitly; generated-world selection among multiple candidates remains a documented manual step |
+| **Dreamfort catalogue contract** | Static test parses all 22 Lua plan entries and verifies each corresponds to an actual `#meta` or `#config` label in vendored `dreamfort.csv` |
+| **Pinned Python runtime** | `requirements.txt` pins the TUI's direct and transitive dependencies to the versions exercised by Python 3.12 CI |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
