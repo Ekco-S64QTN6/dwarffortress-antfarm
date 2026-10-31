@@ -213,7 +213,7 @@ local CHECKS = {
  end},
 
 {group = 'governance', critical = false, name = 'military exists',
- fix = 'antfarm_military create, then antfarm_military enlist', check = function()
+ fix = 'HIGH RISK / MANUAL: antfarm_military create is unverified; test only on a disposable fort after reviewing docs/ROADMAP.md section 2. antfarm_military status is safe to inspect.', check = function()
     local r = rep('antfarm_military')
     if not r then return nil, 'military module unavailable' end
     return (r.squads or 0) > 0,
