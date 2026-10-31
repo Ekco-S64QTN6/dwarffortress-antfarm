@@ -331,6 +331,21 @@ class Claims(unittest.TestCase):
         restarted = ClaimRegistry(path=self.path)
         self.assertEqual(restarted.get("viewer")["unit_id"], 42)
 
+    def test_corrupt_claim_file_is_preserved_and_mutations_fail_closed(self):
+        original = '{"viewer": '
+        with open(self.path, "w", encoding="utf-8") as f:
+            f.write(original)
+
+        damaged = ClaimRegistry(path=self.path)
+        self.assertTrue(damaged.load_failed)
+        self.assertFalse(damaged.set("new_viewer", 42, "Urist"))
+        with self.assertRaises(ClaimPersistenceError):
+            damaged.release("viewer")
+
+        with open(self.path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), original)
+        self.assertFalse(os.path.exists(self.path + ".tmp"))
+
     def test_failed_set_rolls_back_memory_and_keeps_the_previous_disk_state(self):
         self.assertTrue(self.reg.set("viewer", 1, "Urist"))
         with mock.patch("antfarm.twitch.os.replace",
@@ -436,7 +451,7 @@ class ChatDispatch(unittest.TestCase):
 
         self.assertEqual(self.bridge.claims.get("viewer")["unit_id"], 3)
         self.assertNotIn("nick 3 ", " | ".join(self.client.commands))
-        self.assertTrue(any("claim is unchanged" in line for line in self.sent))
+        self.assertTrue(any("nickname is unchanged" in line for line in self.sent))
 
     def test_unclaim_clears_the_in_game_nickname_too(self):
         self.bridge.claims.set("viewer", 3, "Urist")
