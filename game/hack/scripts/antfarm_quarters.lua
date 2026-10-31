@@ -127,18 +127,28 @@ local function fort_levels()
     return sum.anchor, zs
 end
 
--- Logs on hand; a bed needs one and nothing else.
-local function logs_available()
-    local n = 0
-    for _, it in ipairs(df.global.world.items.all) do
-        if it:getType() == df.item_type.WOOD then
-            local ok, free = pcall(function()
-                return not (it.flags.forbid or it.flags.in_job or it.flags.in_building)
+-- A building bed is made from a finished BED item at the carpenter's shop.
+-- Logs are inputs to that workshop job; they are not the item consumed by the
+-- build menu. Do not queue a building construction until a free finished bed
+-- item exists, or DF can cancel the job and discard the temporary building.
+local function available_items(item_type)
+    if item_type == nil then return nil, 'item type is unavailable in this DF build' end
+    local ok_items, items = pcall(function() return df.global.world.items.all end)
+    if not ok_items or not items then return nil, 'world item list is unavailable' end
+
+    local count = 0
+    for _, item in ipairs(items) do
+        local ok_type, kind = pcall(function() return item:getType() end)
+        if not ok_type then return nil, 'could not inspect an item type' end
+        if kind == item_type then
+            local ok_free, free = pcall(function()
+                return not (item.flags.forbid or item.flags.in_job or item.flags.in_building)
             end)
-            if ok and free then n = n + 1 end
+            if not ok_free then return nil, 'could not inspect item reservation flags' end
+            if free then count = count + 1 end
         end
     end
-    return n
+    return count
 end
 
 function place_beds()
@@ -148,8 +158,15 @@ function place_beds()
 
     local anchor, levels = fort_levels()
     if not anchor then return {}, 'no fort anchor yet' end
-    local budget = math.min(short, logs_available(), MAX_BATCH)
-    if budget == 0 then return {}, 'no free logs to build beds from' end
+    local free_beds, item_error = available_items(df.item_type.BED)
+    if free_beds == nil then
+        return {}, 'cannot safely inspect finished bed items: ' .. tostring(item_error)
+    end
+    local budget = math.min(short, free_beds, MAX_BATCH)
+    if budget == 0 then
+        return {}, ('%d citizens short; no free finished bed items (%d available)')
+            :format(short, free_beds)
+    end
 
     local placed = 0
     for _, z in ipairs(levels) do
@@ -179,8 +196,8 @@ function place_beds()
     if placed > 0 then
         pcall(dfhack.run_command, 'prioritize', '-a', 'ConstructBuilding')
     end
-    return {('placed %d bed(s) in dug rooms'):format(placed)},
-           ('%d citizens short, %d logs free'):format(short, logs_available())
+    return {('queued %d bed construction(s)'):format(placed)},
+           ('%d citizens short, %d free finished bed item(s)'):format(short, free_beds)
 end
 
 -- A bed only becomes a bedroom when it is *defined as a room*; an undefined bed
@@ -233,8 +250,12 @@ function queue_furniture()
         })[item.name] or 0
         local want = math.max(0, math.min(batch, h.citizens - have))
         if want > 0 then
+            -- Omit "material": DFHack 0.47's workorder parser expects a
+            -- complete material id (e.g. INORGANIC:IRON), not the category
+            -- token "INORGANIC". With no material field it deliberately lets
+            -- the workshop choose a valid material for this furniture job.
             local ok = pcall(dfhack.run_command, 'workorder',
-                ('{"job":"%s","amount_total":%d,"material":"INORGANIC"}'):format(item.job, want))
+                ('{"job":"%s","amount_total":%d}'):format(item.job, want))
             if ok then
                 table.insert(queued, ('%d %s'):format(want, item.name))
             end
@@ -255,20 +276,28 @@ function tick()
     local now = (dfhack.getTickCount() or 0) / 1000
     if now - antfarm_quarters_state.last_run < RUN_INTERVAL_SEC then return end
     antfarm_quarters_state.last_run = now
-    -- Place first, then assign: assigning is a no-op while there are no beds.
-    local okp, made = pcall(place_beds)
-    if okp and type(made) == 'table' then
-        for _, m in ipairs(made) do
-            table.insert(antfarm_quarters_state.notes, 1, m)
-        end
+    -- Queue the workshop orders first; they produce the finished furniture
+    -- items that the building menu consumes. Assign only the beds that existed
+    -- at the start of this pass, then queue constructions from free BED items.
+    local okq, queued = pcall(queue_furniture)
+    if okq and type(queued) == 'table' and #queued > 0 then
+        table.insert(antfarm_quarters_state.notes, 1,
+            'queued furniture orders: ' .. table.concat(queued, ', '))
     end
+
     local ok, done = pcall(assign_beds)
     if ok then
         for _, msg in ipairs(done) do
             table.insert(antfarm_quarters_state.notes, 1, msg)
         end
     end
-    pcall(queue_furniture)
+
+    local okp, made = pcall(place_beds)
+    if okp and type(made) == 'table' then
+        for _, msg in ipairs(made) do
+            table.insert(antfarm_quarters_state.notes, 1, msg)
+        end
+    end
     while #antfarm_quarters_state.notes > 10 do table.remove(antfarm_quarters_state.notes) end
 end
 
