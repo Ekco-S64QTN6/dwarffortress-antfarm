@@ -88,6 +88,7 @@ class ClaimRegistry:
         self.path = path
         self.lock = threading.Lock()
         self.by_user = {}
+        self.load_failed = False
         self._load()
 
     def _load(self):
@@ -95,10 +96,21 @@ class ClaimRegistry:
             return
         try:
             with open(self.path, "r", encoding="utf-8") as f:
-                self.by_user = json.load(f)
+                claims = json.load(f)
+            if not isinstance(claims, dict) or any(
+                not isinstance(user, str) or not isinstance(record, dict)
+                for user, record in claims.items()
+            ):
+                raise ValueError("claims file must be an object of claim records")
+            self.by_user = claims
         except Exception as e:
-            logging.error(f"Twitch: could not read claims: {e}")
-            self.by_user = {}
+            # Do not turn a damaged file into an empty registry: the next claim
+            # would otherwise overwrite the only recoverable copy.
+            self.load_failed = True
+            logging.error(
+                "Twitch: could not read claims; refusing claim changes until "
+                f"{self.path} is repaired: {e}"
+            )
 
     def _save(self):
         """Persist the current mapping, returning False if the commit failed.
@@ -108,6 +120,11 @@ class ClaimRegistry:
         when only the in-memory mapping changed makes the bot and its restart
         state disagree.
         """
+        if self.load_failed:
+            logging.error(
+                f"Twitch: refusing to overwrite unreadable claims file {self.path}"
+            )
+            return False
         tmp = self.path + ".tmp"
         try:
             directory = os.path.dirname(os.path.abspath(self.path))
@@ -141,6 +158,8 @@ class ClaimRegistry:
             return False
         user_key = user.lower()
         with self.lock:
+            if self.load_failed:
+                return False
             had_previous = user_key in self.by_user
             previous = self.by_user.get(user_key)
             self.by_user[user_key] = {
@@ -162,6 +181,10 @@ class ClaimRegistry:
         """
         user_key = user.lower()
         with self.lock:
+            if self.load_failed:
+                raise ClaimPersistenceError(
+                    f"cannot read the claims file {self.path}; refusing to change it"
+                )
             rec = self.by_user.pop(user_key, None)
             if rec is None:
                 return None
@@ -778,8 +801,8 @@ class TwitchBridge:
             rec = self.claims.release(user)
         except ClaimPersistenceError:
             self.say(
-                f"@{user} I couldn't save your release; your claim is unchanged. "
-                "Please try again later."
+                f"@{user} I couldn't safely update the claim registry, so your "
+                "in-game nickname is unchanged. Check the bot log and try again."
             )
             return
         if not rec:
