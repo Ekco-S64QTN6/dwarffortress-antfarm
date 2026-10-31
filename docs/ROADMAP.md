@@ -31,9 +31,11 @@ finding-by-finding review of the earlier report.
 1. **Furniture-order / bed-placement safety — implementation in PR #13; CI
    pending, not live-fort verified.** `antfarm_quarters` now omits the invalid
    category token `"material":"INORGANIC"` from workorder JSON, so DFHack 0.47's
-   workorder tool can select a valid material. It counts existing manager-order
-   `amount_left` before queuing another batch, preventing the 10-minute tick from
-   multiplying duplicate orders while production is delayed. Bed construction is
+   workorder tool can select any valid material. It submits the native
+   `__reduce_amount` option; the vendored `workorder.lua` matches equivalent open
+   orders and subtracts their `amount_left` before creating only any remainder.
+   A target is reported as submitted only when `dfhack.run_command()` returns
+   `CR_OK`. Bed construction is
    now attempted only when a free, finished `df.item_type.BED` exists; logs alone
    are not treated as a finished bed. Status text says "queued" rather than
    claiming a bed was placed. Offline regression tests cover valid JSON,
@@ -99,7 +101,7 @@ finding-by-finding review of the earlier report.
 | **Subsystem health telemetry** | The Lua bridge distinguishes module-load, report, mapping and tick failures, retains last-success age, and the dashboard surfaces unhealthy/stale modules instead of silently omitting them |
 | **High-risk checklist guidance** | The governance checklist no longer presents direct-memory squad creation as a routine fix; the operator is directed to a disposable fort and the roadmap's explicit risk note |
 | **Manager-order diagnosis** | `antfarm_orders audit` reports tri-state validation/activity flags, stalled jobs/unmet inputs, and manager office readiness (including the 20-citizen threshold); stub tests prove it does not write protected flags |
-| **Quarters furniture safety** | Furniture workorders omit the invalid generic material token, include outstanding `amount_left` in batch planning, and bed construction requires a free finished BED item; offline regressions guard the sequence |
+| **Quarters furniture safety** | Furniture workorders omit the invalid material token, use the vendored `__reduce_amount` matcher, require `CR_OK` before reporting submission, and bed construction requires a free finished BED item; offline regressions guard these contracts |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
@@ -254,9 +256,10 @@ AUTOMATION-GAPS §11 is unimplemented.
 ### 3.8. Housing at scale
 
 `antfarm_quarters` is an interim survival path, not a replacement for Dreamfort's
-full apartment phases. It queues manager workorders for beds, doors, chests and
-cabinets, avoids duplicating quantities already present in matching manager
-orders, and only queues a bed building when a free finished BED item exists. It
+full apartment phases. It submits manager workorder targets for beds, doors, chests and
+cabinets using the vendored workorder script's `__reduce_amount` matcher, which
+subtracts existing matching `amount_left` values before creating a remainder.
+It only queues a bed building when a free finished BED item exists. It
 can place that bed in already-dug indoor floor and define/assign existing beds as
 rooms. It does not yet prove that the full furniture set is completed, that every
 room has correct extents/quality, or that the manager's workorders actually issue.
