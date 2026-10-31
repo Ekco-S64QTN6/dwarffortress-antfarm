@@ -63,14 +63,6 @@ do
     w.dfhack.run_command = function(...)
         local call = {...}
         calls[#calls + 1] = call
-        if call[1] == 'workorder' then
-            local job = (call[2] or ''):match('"job":"([^"]+)"')
-            local amount = tonumber((call[2] or ''):match('"amount_total":(%d+)'))
-            w.df.global.world.manager_orders:push({
-                job_type = w.df.job_type[job],
-                amount_left = amount,
-            })
-        end
         return 0
     end
 
@@ -88,7 +80,8 @@ do
     local valid_json = true
     for _, call in ipairs(calls) do
         local json = call[2] or ''
-        if call[1] ~= 'workorder' or json:find('"material"') then
+        if call[1] ~= 'workorder' or json:find('"material"')
+                or not json:find('"__reduce_amount":true', 1, true) then
             valid_json = false
         end
         for job in pairs(jobs) do
@@ -103,13 +96,14 @@ do
           jobs.ConstructBed and jobs.ConstructDoor
           and jobs.ConstructChest and jobs.ConstructCabinet)
 
-    local queued_again = env.queue_furniture()
-    check('a second pass does not duplicate outstanding furniture orders',
-          #queued_again == 0 and #calls == 4,
-          ('queued=%d calls=%d'):format(#queued_again, #calls))
+    local _, second_detail = env.queue_furniture()
+    check('second pass tells DFHack to reconcile matching open orders',
+          #calls == 8 and valid_json,
+          ('calls=%d detail=%s'):format(#calls, tostring(second_detail)))
 end
 
--- An existing partial order reduces only that job's requested quantity.
+-- An existing matching order uses the requested total as its target. DFHack's
+-- __reduce_amount behavior adjusts the open order instead of adding a duplicate.
 do
     local w, env = fresh(3)
     w.df.global.world.manager_orders:push({
@@ -123,16 +117,20 @@ do
     end
 
     local queued = env.queue_furniture()
-    local bed_amount, other_amounts = nil, 0
+    local bed_amount, bed_reduce, other_amounts = nil, false, 0
     for _, call in ipairs(calls) do
         local json = call[2] or ''
         local job = json:match('"job":"([^"]+)"')
         local amount = tonumber(json:match('"amount_total":(%d+)'))
-        if job == 'ConstructBed' then bed_amount = amount
-        else other_amounts = other_amounts + (amount or 0) end
+        if job == 'ConstructBed' then
+            bed_amount = amount
+            bed_reduce = json:find('"__reduce_amount":true', 1, true) ~= nil
+        else
+            other_amounts = other_amounts + (amount or 0)
+        end
     end
-    check('partial pending bed order is subtracted from new bed order',
-          bed_amount == 2, tostring(bed_amount))
+    check('matching bed order receives desired total, not an additive delta',
+          bed_amount == 3 and bed_reduce, tostring(bed_amount))
     check('unrelated furniture orders retain their full target',
           other_amounts == 9, tostring(other_amounts))
 end
@@ -180,22 +178,6 @@ do
     check('only doors, chests and cabinets are queued when beds are complete',
           jobs.ConstructDoor == 3 and jobs.ConstructChest == 3
           and jobs.ConstructCabinet == 3 and jobs.ConstructBed == nil)
-end
-
--- If the order vector is unreadable, the script skips queueing rather than
--- treating unknown pending demand as zero and creating another batch.
-do
-    local w, env = fresh(2)
-    local calls = 0
-    w.df.global.world.manager_orders = setmetatable({}, {
-        __len = function() error('manager order vector unavailable') end,
-    })
-    w.dfhack.run_command = function() calls = calls + 1; return 0 end
-    local queued, detail = env.queue_furniture()
-    check('unknown pending-order state fails closed', #queued == 0 and calls == 0,
-          ('queued=%d calls=%d'):format(#queued, calls))
-    check('unknown order state is reported as skipped safely',
-          tostring(detail):find('skipped safely:', 1, true) ~= nil, tostring(detail))
 end
 
 -- A log is a workshop input, not the finished bed item consumed by the build
