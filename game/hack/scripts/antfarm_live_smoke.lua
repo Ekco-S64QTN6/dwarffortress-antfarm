@@ -8,7 +8,7 @@
 -- and an explicit operator confirmation before it invokes this script.
 --
 -- Usage:
---   dfhack-run antfarm_live_smoke <32-character-hex-run-id>
+--   dfhack-run antfarm_live_smoke <32-character-hex-run-id> <region-folder>
 --
 -- Output is a small aggregate-only report in the DF installation directory:
 --   antfarm_live_smoke_<run-id>.txt
@@ -34,7 +34,7 @@ if not ok_path or type(df_path) ~= 'string' or df_path == '' then
     qerror('antfarm_live_smoke: dfhack.getDFPath() did not return the DF root')
 end
 local function normalize_path(path)
-    return tostring(path):gsub('\\\\', '/'):gsub('/+$', '')
+    return tostring(path):gsub('\\', '/'):gsub('/+$', '')
 end
 local expected_save_path = normalize_path(df_path .. '/data/save/' .. selected_region)
 local expected_suffix = '/data/save/' .. selected_region
