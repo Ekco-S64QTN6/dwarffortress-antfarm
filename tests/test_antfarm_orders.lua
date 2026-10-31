@@ -37,9 +37,9 @@ local function office_fixture(population, manager_histfig, chair_owner)
     for i = 1, population do
         w.add_citizen(i, 1, 1, 1)
     end
-    w.df.global.world.buildings = {all = {}}
+    w.df.global.world.buildings = {all = stub.vector{}}
     if chair_owner ~= nil then
-        table.insert(w.df.global.world.buildings.all, {
+        w.df.global.world.buildings.all:push({
             owner_id = chair_owner,
             is_room = true,
             getType = function() return 99 end,
