@@ -10,6 +10,7 @@ happily execute commands a test writes into the real spool -- AGENTS.md section
 
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -29,6 +30,50 @@ from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
 from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
                             TwitchBridge)                    # noqa: E402
+
+
+class DreamfortCatalogue(unittest.TestCase):
+    """Keep the guided Lua checklist aligned with the vendored Quickfort CSV."""
+
+    def test_every_guided_build_step_has_a_real_dreamfort_label(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        lua_path = os.path.join(
+            root, "game", "hack", "scripts", "antfarm_blueprint.lua"
+        )
+        csv_path = os.path.join(
+            root, "game", "blueprints", "library", "dreamfort.csv"
+        )
+        with open(lua_path, encoding="utf-8") as f:
+            lua = f.read()
+        with open(csv_path, encoding="utf-8") as f:
+            catalogue = f.read()
+
+        plan = re.search(
+            r"(?ms)^local PLAN = \{(.*?)^\}",
+            lua,
+        )
+        self.assertIsNotNone(plan, "could not locate the Lua build PLAN table")
+        steps = re.findall(
+            r"\bbp\s*=\s*['\"](/[^'\"]+)['\"]",
+            plan.group(1),
+        )
+        self.assertEqual(len(steps), 22, "update the expected Dreamfort plan size deliberately")
+        self.assertEqual(len(steps), len(set(steps)), "build plan contains duplicate labels")
+
+        # Dreamfort uses both #meta (most blueprints) and #config (/setup)
+        # labels; /central_stairs and /dig_all are meta-blueprints, not CSV
+        # filenames. Match the actual Quickfort labels rather than searching
+        # for a misleading substring anywhere in the CSV text.
+        labels = set(re.findall(
+            r"#(?:meta|config)\s+label\(([^)]+)\)",
+            catalogue,
+        ))
+        missing = sorted(set(steps) - labels)
+        self.assertEqual(
+            missing, [],
+            "PLAN references labels absent from dreamfort.csv",
+        )
+        self.assertTrue({"/setup", "/dig_all", "/central_stairs"}.issubset(steps))
 
 
 class ClientProtocol(unittest.TestCase):
