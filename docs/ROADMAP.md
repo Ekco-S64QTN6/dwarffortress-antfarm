@@ -42,6 +42,19 @@ finding-by-finding review of the earlier report.
    unproven. **Diagnose this before anything else**: it blocks the entire
    production economy, and both the bed and booze failures above are downstream
    of it.
+
+   A new **read-only** diagnostic is now available:
+   `cd game && ./dfhack-run antfarm_orders audit`. It reports the current validated /
+   unvalidated / unknown and active / inactive / unknown counts, plus impossible
+   orders, stalled jobs and unmet job-item requirements. It reads the status bits
+   but never writes them. Capture this output before changing the manager, office,
+   work-order definitions or labour assignments. The
+   [DF 0.47.05 Manager reference](https://dwarffortresswiki.org/index.php/DF2014:Manager#Work_orders)
+   says that at 20+ citizens the manager must visit their office to validate
+   orders. A missing/unassigned office is therefore a strong hypothesis for a
+   mature fort, but the population and office state at the time of the original
+   61-order capture were not preserved; keep the diagnosis open until the audit
+   is run on that save.
 3. **I crashed the fort chasing that.** Writing `status.validated`/`status.active`
    across the order list segfaulted DF silently — no error, no core, nothing in
    the log. Recorded as AGENTS.md 6.1.12: read those bits, never write them. The

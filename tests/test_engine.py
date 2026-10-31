@@ -30,7 +30,8 @@ from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
 from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
                             TwitchBridge)                    # noqa: E402
-from antfarm.tui import format_subsystem_health              # noqa: E402
+from antfarm.tui import (format_manager_order_status,
+                         format_subsystem_health)             # noqa: E402
 
 
 class DreamfortCatalogue(unittest.TestCase):
@@ -102,6 +103,31 @@ class HighRiskGuidance(unittest.TestCase):
             "`antfarm_military create` then `enlist` |",
             docs,
         )
+
+
+class ManagerOrderDiagnostics(unittest.TestCase):
+    def test_dashboard_flags_unvalidated_orders_without_claiming_a_cause(self):
+        line = format_manager_order_status({
+            "total": 61, "validated": 0, "unvalidated": 61,
+            "validation_unknown": 0, "active": 0,
+        })
+        self.assertIn("61 total", line)
+        self.assertIn("61 not validated", line)
+        self.assertNotIn("manager office", line.lower())
+
+    def test_dashboard_flags_unreadable_validation_state(self):
+        line = format_manager_order_status({
+            "total": 3, "validated": 1, "unvalidated": 0,
+            "validation_unknown": 2,
+        })
+        self.assertIn("2 status unknown", line)
+
+    def test_dashboard_is_quiet_when_all_order_states_are_known_and_validated(self):
+        self.assertIsNone(format_manager_order_status({
+            "total": 4, "validated": 4, "unvalidated": 0,
+            "validation_unknown": 0,
+        }))
+        self.assertIsNone(format_manager_order_status(None))
 
 
 class SubsystemHealth(unittest.TestCase):

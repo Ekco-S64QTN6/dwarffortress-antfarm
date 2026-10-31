@@ -635,6 +635,12 @@ local function subsystems_summary()
     ask('antfarm_orders', function(rep)
         summary.orders = {
             total = rep.orders or 0,
+            validated = rep.validated or 0,
+            unvalidated = rep.unvalidated or 0,
+            validation_unknown = rep.validation_unknown or 0,
+            active = rep.active or 0,
+            inactive = rep.inactive or 0,
+            activity_unknown = rep.activity_unknown or 0,
             impossible = arr(rep.impossible or {}),
         }
     end)

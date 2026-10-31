@@ -17,6 +17,7 @@
 --   antfarm_orders reap         cancel the impossible ones
 --   antfarm_orders reap --dry   show what would be cancelled
 --   antfarm_orders stalls       diagnose jobs that cannot find materials
+--   antfarm_orders audit        READ-ONLY manager-order validation/activity audit
 
 --@module = true
 
@@ -46,6 +47,45 @@ local function job_name(o)
     return (ok and n) or tostring(o.job_type)
 end
 
+-- DF 0.47 exposes these flags for diagnosis. Read them defensively: old or
+-- unusual order objects may not expose one of the fields in this build.
+-- NEVER assign status.validated or status.active. AGENTS.md 6.1.12 records
+-- a silent DF crash caused by writing these fields.
+local function read_order_flag(order, flag)
+    local ok, value = pcall(function()
+        local status = order.status
+        if status == nil then return nil end
+        return status[flag]
+    end)
+    if ok and type(value) == 'boolean' then return value end
+    return nil
+end
+
+local function order_flag_counts(rows)
+    local counts = {
+        validated = 0, unvalidated = 0, validation_unknown = 0,
+        active = 0, inactive = 0, activity_unknown = 0,
+    }
+    for _, row in ipairs(rows) do
+        if row.validated == true then
+            counts.validated = counts.validated + 1
+        elseif row.validated == false then
+            counts.unvalidated = counts.unvalidated + 1
+        else
+            counts.validation_unknown = counts.validation_unknown + 1
+        end
+
+        if row.active == true then
+            counts.active = counts.active + 1
+        elseif row.active == false then
+            counts.inactive = counts.inactive + 1
+        else
+            counts.activity_unknown = counts.activity_unknown + 1
+        end
+    end
+    return counts
+end
+
 function scan()
     local out = {}
     local m = metals()
@@ -68,6 +108,8 @@ function scan()
             job = job_name(o),
             material = mat,
             amount_left = o.amount_left,
+            validated = read_order_flag(o, 'validated'),
+            active = read_order_flag(o, 'active'),
             impossible = impossible,
             reason = reason,
         })
@@ -175,6 +217,27 @@ function stalled_jobs()
     return out
 end
 
+-- Read-only audit of manager-order state and blocked production jobs.
+-- This is deliberately separate from reap()/unstick(): it never calls a DF
+-- command, changes an order, or assigns to status.validated/status.active.
+function audit()
+    local rows = scan()
+    local counts = order_flag_counts(rows)
+    local jobs = stalled_jobs()
+    local unmet = 0
+    for _, job in ipairs(jobs) do
+        unmet = unmet + #(job.unmet or {})
+    end
+    counts.orders = #rows
+    counts.impossible = 0
+    for _, row in ipairs(rows) do
+        if row.impossible then counts.impossible = counts.impossible + 1 end
+    end
+    counts.stalled_jobs = #jobs
+    counts.unmet_requirements = unmet
+    return {counts = counts, orders = rows, jobs = jobs}
+end
+
 -- Escalating remedies for a fort that cannot finish a construction. Ordered
 -- cheapest and safest first; `createitem` is deliberately last and off by
 -- default, because spawning an item hides the supply-chain bug that caused the
@@ -239,8 +302,15 @@ function report()
             table.insert(impossible, ('%s (%s)'):format(r.job, r.material))
         end
     end
+    local counts = order_flag_counts(rows)
     return {
         orders = #rows,
+        validated = counts.validated,
+        unvalidated = counts.unvalidated,
+        validation_unknown = counts.validation_unknown,
+        active = counts.active,
+        inactive = counts.inactive,
+        activity_unknown = counts.activity_unknown,
         impossible = impossible,
         notes = antfarm_orders_state.notes,
     }
@@ -262,6 +332,42 @@ if verb == 'reap' then
     for _, k in ipairs(killed) do
         print(('antfarm_orders: %s %s (%s) -- %s')
             :format(dry and 'would cancel' or 'cancelled', k.job, k.material, k.reason))
+    end
+elseif verb == 'audit' or verb == 'diagnose' then
+    local result = audit()
+    local c = result.counts
+    print(('antfarm_orders: READ-ONLY audit -- %d order(s), %d validated, '
+        .. '%d unvalidated, %d validation unknown')
+        :format(c.orders, c.validated, c.unvalidated, c.validation_unknown))
+    print(('  active=%d inactive=%d activity-unknown=%d impossible=%d')
+        :format(c.active, c.inactive, c.activity_unknown, c.impossible))
+    print(('  stalled jobs=%d, unmet job requirements=%d')
+        :format(c.stalled_jobs, c.unmet_requirements))
+    local shown = 0
+    for _, row in ipairs(result.orders) do
+        if row.validated ~= true or row.active == nil or row.impossible then
+            shown = shown + 1
+            if shown <= 25 then
+                local validated = row.validated == nil and 'unknown'
+                    or (row.validated and 'yes' or 'no')
+                local active = row.active == nil and 'unknown'
+                    or (row.active and 'yes' or 'no')
+                print(('  [%2d] %-22s left=%-4s validated=%-7s active=%-7s%s')
+                    :format(row.index, row.job, tostring(row.amount_left),
+                            validated, active,
+                            row.impossible and (' IMPOSSIBLE: ' .. tostring(row.reason)) or ''))
+            end
+        end
+    end
+    if shown > 25 then print(('  ... %d more flagged order(s)'):format(shown - 25)) end
+    for _, job in ipairs(result.jobs) do
+        print(('  job %s at %d,%d,%d%s')
+            :format(job.job, job.pos.x, job.pos.y, job.pos.z,
+                    job.suspended and ' [SUSPENDED]' or ''))
+        for _, w in ipairs(job.unmet or {}) do
+            print(('    wants %s x%d (%s), has %d')
+                :format(w.item_type, w.quantity, w.material, w.supplied))
+        end
     end
 elseif verb == 'stalls' then
     local stalls = stalled_jobs()
