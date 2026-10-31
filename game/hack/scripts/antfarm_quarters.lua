@@ -236,45 +236,13 @@ function assign_beds()
     return done
 end
 
--- Outstanding orders count toward the requested quantity. The bridge calls
--- this every ten minutes; without this check a slow/unvalidated manager would
--- receive another full batch each pass, multiplying duplicate furniture orders.
--- If the order vector or a matching order's amount cannot be read, fail closed
--- for that furniture type rather than risk adding another duplicate.
-local function pending_order_amount(job_name)
-    local job_type = df.job_type[job_name]
-    if job_type == nil then
-        return nil, 'job type is unavailable: ' .. tostring(job_name)
-    end
-    local ok_orders, orders = pcall(function()
-        return df.global.world.manager_orders
-    end)
-    if not ok_orders or not orders then
-        return nil, 'manager order list is unavailable'
-    end
-    local ok_count, count = pcall(function() return #orders end)
-    if not ok_count then return nil, 'manager order count is unavailable' end
-
-    local pending = 0
-    for i = 0, count - 1 do
-        local order = orders[i]
-        local ok_match, matches = pcall(function()
-            return order.job_type == job_type
-        end)
-        if not ok_match then return nil, 'could not inspect a manager order' end
-        if matches then
-            local ok_amount, remaining = pcall(function() return order.amount_left end)
-            if not ok_amount or type(remaining) ~= 'number' then
-                return nil, 'could not read remaining amount for ' .. tostring(job_name)
-            end
-            pending = pending + math.max(0, remaining)
-        end
-    end
-    return pending
-end
-
 -- Queue the furniture the fort is short of.
-
+--
+-- DFHack 0.47's workorder tool supports __reduce_amount. It matches existing
+-- open orders and adjusts their remaining amount toward amount_total instead of
+-- adding another batch every 10-minute tick. Use the native matcher rather than
+-- counting every order of the same job type: a differently constrained order
+-- must not be mistaken for this furniture request.
 function queue_furniture()
     local h = housing()
     local short = math.max(0, h.citizens - h.beds)
@@ -286,30 +254,25 @@ function queue_furniture()
         -- Each furniture type has its own shortfall. Do not stop queueing
         -- doors/chests/cabinets just because bed count has caught up.
         local target = math.max(0, math.min(MAX_BATCH, h.citizens - have))
-        local pending, pending_error = pending_order_amount(item.job)
-        if pending == nil then
-            table.insert(skipped, ('%s (cannot safely inspect pending orders: %s)')
-                :format(item.name, tostring(pending_error)))
-        else
-            local want = math.max(0, target - pending)
-            if want > 0 then
-                -- Omit "material": DFHack 0.47's workorder parser expects a
-                -- complete material id (e.g. INORGANIC:IRON), not the category
-                -- token "INORGANIC". With no material field it deliberately lets
-                -- the workshop choose a valid material for this furniture job.
-                local ok, result = pcall(dfhack.run_command, 'workorder',
-                    ('{"job":"%s","amount_total":%d}'):format(item.job, want))
-                if ok and result == CR_OK then
-                    table.insert(queued, ('%d %s'):format(want, item.name))
-                else
-                    local reason = ok and ('command result ' .. tostring(result))
-                        or tostring(result)
-                    table.insert(skipped, ('%s (workorder command failed: %s)')
-                        :format(item.name, reason))
-                end
+        if target > 0 then
+            -- Omit "material": DFHack 0.47's workorder parser defaults to any
+            -- material when the field is absent. "INORGANIC" is not a concrete
+            -- matinfo id. __reduce_amount makes this a desired outstanding
+            -- amount, not an additive batch.
+            local json = ('{"job":"%s","amount_total":%d,"__reduce_amount":true}')
+                :format(item.job, target)
+            local ok, result = pcall(dfhack.run_command, 'workorder', json)
+            if ok and result == CR_OK then
+                table.insert(queued, ('%d %s target'):format(target, item.name))
+            else
+                local reason = ok and ('command result ' .. tostring(result))
+                    or tostring(result)
+                table.insert(skipped, ('%s (workorder command failed: %s)')
+                    :format(item.name, reason))
             end
         end
     end
+
     local detail = short > 0
         and ('%d citizens without a bed'):format(short)
         or 'all citizens have beds; checking accessory furniture separately'
