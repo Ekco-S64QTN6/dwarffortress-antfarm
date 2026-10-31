@@ -93,8 +93,10 @@ finding-by-finding review of the earlier report.
    quarters report and survival checklist report, then writes an aggregate-only
    file under the DF installation root. Its path gates and report handling are
    covered by no-game tests; an operator must still run it with the marked copy
-   loaded in DFHack before it can produce live evidence. See
-   [the live-smoke procedure](LIVE-SMOKE.md).
+   loaded in DFHack before it can produce live evidence. The Lua probe uses
+   `dfhack.getSavePath()` to require that the running game is on the selected
+   region, in addition to the human confirmation. Offline tests also reject
+   symlinked save folders and save files. See [the live-smoke procedure](LIVE-SMOKE.md).
 
 ### Cross-cutting hardening completed 2026-10-31
 
@@ -111,7 +113,7 @@ finding-by-finding review of the earlier report.
 | **High-risk checklist guidance** | The governance checklist no longer presents direct-memory squad creation as a routine fix; the operator is directed to a disposable fort and the roadmap's explicit risk note |
 | **Manager-order diagnosis** | `antfarm_orders audit` reports tri-state validation/activity flags, stalled jobs/unmet inputs, and manager office readiness (including the 20-citizen threshold); stub tests prove it does not write protected flags |
 | **Quarters furniture safety** | Furniture workorders omit the invalid material token, use the vendored `__reduce_amount` matcher to subtract equivalent open orders' `amount_left`, require `CR_OK` before reporting submission, and bed construction requires a free finished BED item; offline regressions guard these contracts |
-| **Disposable live-smoke runner** | Explicitly marked `world.sav` + two operator confirmations; calls only read-only order/quarters/checklist reports; wrapper and Lua report handling are unit-tested, but no live run is claimed |
+| **Disposable live-smoke runner** | Requires a marked `world.sav`, two operator confirmations, and an exact `dfhack.getSavePath()` match; only read-only reports run; offline safety tests pass, but no live run is claimed |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
