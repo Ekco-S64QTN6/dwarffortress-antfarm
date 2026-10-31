@@ -137,6 +137,19 @@ do
           other_amounts == 9, tostring(other_amounts))
 end
 
+-- A rejected DFHack command is not a successfully queued manager order.
+do
+    local w, env = fresh(2)
+    local calls = 0
+    w.dfhack.run_command = function() calls = calls + 1; return 5 end
+    local queued, detail = env.queue_furniture()
+    check('non-CR_OK workorder results are not counted as queued',
+          #queued == 0 and calls == 4, ('queued=%d calls=%d'):format(#queued, calls))
+    check('rejected workorders are surfaced as safe warnings',
+          tostring(detail):find('workorder command failed', 1, true) ~= nil,
+          tostring(detail))
+end
+
 -- Accessory furniture has its own shortfall and is not gated by the bed
 -- count. Otherwise getting the final bed built early would suppress all later
 -- door/chest/cabinet orders.
