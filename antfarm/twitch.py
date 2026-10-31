@@ -46,6 +46,8 @@ RATE_LIMIT_MESSAGES = 18
 RATE_LIMIT_WINDOW = 30.0
 
 USER_COOLDOWN = 8.0        # seconds between commands from one viewer
+USER_COOLDOWN_PRUNE_INTERVAL = 15.0
+MAX_USER_COOLDOWN_ENTRIES = 2048
 CAMERA_COOLDOWN = 20.0     # seconds between camera grabs from chat, globally
 OVERRIDE_SECONDS = 45.0    # how long a viewer holds the camera
 
@@ -262,7 +264,10 @@ class TwitchBridge:
 
         self._send_times = []
         self._send_lock = threading.Lock()
+        # Capped so one-off chat logins cannot grow this registry for the
+        # lifetime of a long-running stream. Active entries are never evicted.
         self._user_last_cmd = {}
+        self._next_user_cooldown_prune = 0.0
         self._last_camera_grab = 0.0
 
         self.poll = None
@@ -520,12 +525,37 @@ class TwitchBridge:
             or "moderator/1" in badges
         )
 
+    def _prune_user_cooldowns(self, now):
+        """Remove expired logins without evicting anyone still on cooldown."""
+        cutoff = now - USER_COOLDOWN
+        expired = [
+            login for login, timestamp in self._user_last_cmd.items()
+            if timestamp <= cutoff
+        ]
+        for login in expired:
+            self._user_last_cmd.pop(login, None)
+        self._next_user_cooldown_prune = now + USER_COOLDOWN_PRUNE_INTERVAL
+
     def _cooldown_ok(self, user):
-        now = time.time()
-        last = self._user_last_cmd.get(user.lower(), 0)
-        if now - last < USER_COOLDOWN:
+        """Enforce per-viewer cooldowns with bounded, opportunistic cleanup."""
+        now = time.monotonic()
+        login = user.lower()
+        if now >= self._next_user_cooldown_prune:
+            self._prune_user_cooldowns(now)
+
+        last = self._user_last_cmd.get(login)
+        if last is not None and now - last < USER_COOLDOWN:
             return False
-        self._user_last_cmd[user.lower()] = now
+
+        # If every slot belongs to a viewer who is still on cooldown, refuse a
+        # new login rather than evicting an active viewer and letting them bypass
+        # the limit by reconnecting/chatting again during a burst.
+        if last is None and len(self._user_last_cmd) >= MAX_USER_COOLDOWN_ENTRIES:
+            self._prune_user_cooldowns(now)
+            if len(self._user_last_cmd) >= MAX_USER_COOLDOWN_ENTRIES:
+                return False
+
+        self._user_last_cmd[login] = now
         return True
 
     def say(self, text):
