@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,7 +41,7 @@ class LiveSmokeSafety(unittest.TestCase):
             "printf 'format=%s\\nrun_id=%s\\nmap_loaded=true\\n"
             "orders_status=ok\\nquarters_status=ok\\n"
             "checklist_status=ok\\nloaded_save_matches=true\\n"
-            "loaded_save_folder=%s\\n' "
+            "loaded_save_status=ok\\nloaded_save_folder=%s\\n' "
             "'antfarm-live-smoke-v1' \"$2\" \"$3\" > "
             "antfarm_live_smoke_\"$2\".txt\n",
             encoding="utf-8",
@@ -66,15 +67,21 @@ class LiveSmokeSafety(unittest.TestCase):
             self.validate(loaded=False)
         self.assertFalse((self.df_dir / "runner.calls").exists())
 
-    def test_requires_the_exact_marker_inside_a_real_fort_save(self):
+    def test_requires_an_exact_regular_marker_inside_the_fort_save(self):
         marker = self.save_dir / smoke.MARKER_NAME
         marker.unlink()
         with self.assertRaisesRegex(smoke.SmokeError, "marker"):
             self.validate()
-        self.assertFalse((self.df_dir / "runner.calls").exists())
 
         marker.write_text("this is not an acknowledgement\n", encoding="utf-8")
         with self.assertRaisesRegex(smoke.SmokeError, "must contain exactly"):
+            self.validate()
+
+        marker.unlink()
+        outside = Path(self.temp.name) / "marker"
+        outside.write_text(smoke.MARKER_CONTENT, encoding="utf-8")
+        marker.symlink_to(outside)
+        with self.assertRaisesRegex(smoke.SmokeError, "marker"):
             self.validate()
         self.assertFalse((self.df_dir / "runner.calls").exists())
 
@@ -89,7 +96,12 @@ class LiveSmokeSafety(unittest.TestCase):
                     self.validate(region=region)
         self.assertFalse((self.df_dir / "runner.calls").exists())
 
-    def test_requires_the_installed_lua_probe_and_executable_wrapper(self):
+    def test_rejects_missing_save_root(self):
+        shutil.rmtree(self.df_dir / "data" / "save")
+        with self.assertRaisesRegex(smoke.SmokeError, "save root or selected region"):
+            self.validate()
+
+    def test_requires_the_installed_lua_probe_and_both_executable_wrappers(self):
         script = self.df_dir / smoke.LUA_SCRIPT
         script.unlink()
         with self.assertRaisesRegex(smoke.SmokeError, "Lua script not installed"):
@@ -100,15 +112,23 @@ class LiveSmokeSafety(unittest.TestCase):
         runner.chmod(0o644)
         with self.assertRaisesRegex(smoke.SmokeError, "executable DFHack wrapper"):
             self.validate()
+        runner.chmod(0o755)
+
+        native_runner = self.df_dir / "hack" / "dfhack-run"
+        native_runner.chmod(0o644)
+        with self.assertRaisesRegex(smoke.SmokeError, "native DFHack RPC client"):
+            self.validate()
         self.assertFalse((self.df_dir / "runner.calls").exists())
 
-    def test_runs_only_the_named_read_only_probe_and_checks_run_id(self):
+    def test_runs_only_the_named_read_only_probe_and_checks_run_id_and_region(self):
         df_dir, _save_dir, runner = self.validate()
         values, report = smoke.run_smoke(
             df_dir, runner, "region_test", timeout_seconds=5
         )
         self.assertEqual(values["format"], smoke.REPORT_FORMAT)
         self.assertEqual(values["map_loaded"], "true")
+        self.assertEqual(values["loaded_save_matches"], "true")
+        self.assertEqual(values["loaded_save_folder"], "region_test")
         self.assertEqual(values["orders_status"], "ok")
         self.assertTrue(report.is_file())
         self.assertRegex(report.name, r"^antfarm_live_smoke_[0-9a-f]{32}\.txt$")
@@ -126,11 +146,6 @@ class LiveSmokeSafety(unittest.TestCase):
             encoding="utf-8",
         )
         runner.chmod(0o755)
-        native_runner = self.df_dir / "hack" / "dfhack-run"
-        native_runner.chmod(0o644)
-        with self.assertRaisesRegex(smoke.SmokeError, "native DFHack RPC client"):
-            self.validate()
-        native_runner.chmod(0o755)
         df_dir, _save_dir, runner = self.validate()
         with self.assertRaisesRegex(smoke.SmokeError, "no fortress map is loaded"):
             smoke.run_smoke(df_dir, runner, "region_test", timeout_seconds=5)
@@ -138,12 +153,12 @@ class LiveSmokeSafety(unittest.TestCase):
     def test_rejects_when_the_loaded_game_is_a_different_save_folder(self):
         runner = self.df_dir / smoke.RUNNER_NAME
         runner.write_text(
-            "#!/bin/sh\\n"
-            "set -eu\\n"
-            "printf 'format=antfarm-live-smoke-v1\\\\nrun_id=%s\\\\n"
-            "map_loaded=true\\\\nloaded_save_matches=false\\\\n"
-            "loaded_save_folder=region_primary\\\\n' \\"$2\\" > "
-            "antfarm_live_smoke_\\"$2\\".txt\\n",
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "printf 'format=antfarm-live-smoke-v1\\nrun_id=%s\\n"
+            "map_loaded=true\\nloaded_save_matches=false\\n"
+            "loaded_save_folder=region_primary\\n' \"$2\" > "
+            "antfarm_live_smoke_\"$2\".txt\n",
             encoding="utf-8",
         )
         runner.chmod(0o755)
@@ -155,7 +170,7 @@ class LiveSmokeSafety(unittest.TestCase):
         world_save = self.save_dir / "world.sav"
         world_save.unlink()
         outside = Path(self.temp.name) / "world.sav"
-        outside.write_text("not the disposable save\\n", encoding="utf-8")
+        outside.write_text("not the disposable save\n", encoding="utf-8")
         world_save.symlink_to(outside)
         with self.assertRaisesRegex(smoke.SmokeError, "world.sav is required"):
             self.validate()
@@ -165,6 +180,8 @@ class LiveSmokeSafety(unittest.TestCase):
         self.assertIn("module_report('antfarm_orders', 'audit')", lua)
         self.assertIn("module_report('antfarm_quarters', 'report')", lua)
         self.assertIn("module_report('antfarm_checklist', 'report')", lua)
+        self.assertIn("dfhack.getSavePath", lua)
+        self.assertIn("loaded_save_matches", lua)
         self.assertNotIn("dfhack.run_command", lua)
         self.assertNotIn("constructBuilding", lua)
         self.assertNotIn("setOwner", lua)
