@@ -69,7 +69,7 @@ finding-by-finding review of the earlier report.
 | Thing | Evidence |
 | :-- | :-- |
 | **Automated offline test gate** | `.github/workflows/tests.yml` runs `./tests/run_all.sh` on pushes and pull requests; the first workflow run passed |
-| **Twitch claim write failures** | `ClaimRegistry` now rolls back in-memory mutations on disk-write failure; failed `!unclaim` leaves the dwarf nickname intact; regression tests pass in CI |
+| **Twitch claim persistence** | `ClaimRegistry` rolls back failed writes, fails closed on malformed JSON, preserves the damaged file, and keeps the in-game nickname intact when a release cannot be saved; regression tests pass in CI |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
