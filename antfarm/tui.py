@@ -175,7 +175,6 @@ def format_manager_order_status(orders):
     office = orders.get("manager_office")
     if isinstance(office, dict):
         status = office.get("status")
-        citizens = count("total")  # keep all displayed counts numeric
         office_citizens = office.get("citizens")
         if status == "missing":
             suffix = (
