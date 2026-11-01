@@ -65,6 +65,17 @@ finding-by-finding review of the earlier report.
    `unknown`. A missing office is a strong hypothesis for a mature fort, but the
    population and office state at the time of the original 61-order capture were
    not preserved; keep the diagnosis open until the audit is run on that save.
+
+   **Live measurement, 2026-10-31 (`region1`, Erushavuz, 7 citizens, no manager
+   office, `not_required`):** 46 orders imported from `library/basic` while the
+   game was paused showed `validated=no` on every one. Two in-game days after the
+   watchdog unpaused, 50 of 53 were validated (the 3 stragglers had just been
+   created by `/surface2`); about nine days after load all 53 were, with 17
+   active and the first order-driven jobs (MakeTool, MakeCage, MakeBucket,
+   ConstructSplint) at workshops. So below 20 citizens validation works without
+   an office, and needs only game time. **An audit taken while paused, or
+   immediately after an import, will show every order unvalidated; that is not
+   by itself a fault.** The original 61-order fort remains unexplained.
 3. **I crashed the fort chasing that.** Writing `status.validated`/`status.active`
    across the order list segfaulted DF silently — no error, no core, nothing in
    the log. Recorded as AGENTS.md 6.1.12: read those bits, never write them. The
@@ -119,6 +130,9 @@ finding-by-finding review of the earlier report.
 | **Dreamfort order-library retry** | PR #21 records an import as complete only after DFHack returns `CR_OK`; rejected imports remain pending and are retried after a later completed build step |
 | **Autolabor command observability** | PR #22 checks `CR_OK` for MINE/CUTWOOD/HERBALIST/PLANT and publishes rejected command settings rather than claiming success; Lua tests cover return-code and thrown-error paths |
 | **Post-job assignment gap** | PR #23 merged with passing CI; DFHack `workNow 2` pokes assignment when a dwarf finishes a job. It reduces post-job idle delay but does not create jobs or bypass labor eligibility |
+| **A still with no brew orders** | Live `region1` sat at build step 4 with a finished still and `orders_done` empty: `library/basic` waits for step 5, which waits on surface digging. `antfarm_sustenance` now imports it once a still is finished, via `antfarm_blueprint.import_order_library()`, which also adopts brew orders already in the fort instead of duplicating 46 orders after a re-anchor. **Verified live:** imported on load, recorded in the plan, not re-imported at step 6; all 53 orders validated about nine in-game days after load |
+| **The idle dwarves** | `prioritize -j` and `autolabor status` on the live fort: the only unclaimed work was 59 dig/stair jobs, so four dwarves had nothing they *could* do. Once step 5 placed workshops and stockpiles, every dwarf had a job |
+| **A pick on the floor** | `tune_labour()` set each tool labour's minimum to 1, below DFHack's MINE default of 2; past the minimum autolabor only adds skilled dwarves or acts when 2+ are idle (`autolabor.cpp`, 0.47.05-r8). 110 dig jobs had one miner. Minimum now equals the tool count. **Verified live:** both picks held, two dig jobs worked |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
@@ -309,8 +323,10 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
 
 ## 5. Suggested order
 
-1. **Unstick the live build** (step 11/22). Almost everything else is downstream:
-   no apartments, no jail, no grand dining hall, no guildhalls until it moves.
+1. **Keep the live build moving.** The current fort (`region1`, Erushavuz) went
+   from step 4 to step 7 on 2026-10-31 once brewing orders and both picks were
+   in use. Digging is now limited by having two picks: more need a smelter and
+   forge (Dreamfort `/industry2`, step 10) or the trade driver below.
 2. **Strange moods** — cheapest high-stakes win; loses a dwarf permanently when
    it fails.
 3. **Verify `antfarm_military create`** once by hand, then let enlistment run.
