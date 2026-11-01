@@ -213,7 +213,7 @@ local CHECKS = {
  end},
 
 {group = 'governance', critical = false, name = 'military exists',
- fix = 'HIGH RISK / MANUAL: antfarm_military create is unverified; test only on a disposable fort after reviewing docs/ROADMAP.md section 2. antfarm_military status is safe to inspect.', check = function()
+ fix = 'MANUAL: create a squad in the military screen (m, then c); antfarm_military enlist then fills it. Squads cannot be created from DFHack 0.47 Lua -- see docs/ROADMAP.md.', check = function()
     local r = rep('antfarm_military')
     if not r then return nil, 'military module unavailable' end
     return (r.squads or 0) > 0,

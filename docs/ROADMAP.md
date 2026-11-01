@@ -162,29 +162,28 @@ session and produced the stated effect:
 | **Subsystem tick dispatcher** | Low | Confirm `subsystems` in `antfarm_state.json` updates and that each module's notes appear over ~15 min |
 | **State aggregator rewrite** | Low | Confirm `housing.shortfall`, `trade.has_depot`, `metals.missing` show real values, not `0`/`true`/`[1,2]` |
 | **`antfarm_military` enlist / schedule** | Medium | Needs an existing squad; confirm dwarves get `military.squad_id` set and training min_count is `filled-1` |
-| **`antfarm_military create`** | **High** | Builds `df.squad` by hand. Run once manually, then open the military screen and confirm the squad is usable, nameable and assignable |
+| **`antfarm_military create`** | — | **Resolved 2026-10-31: impossible in this build, now refuses.** See below |
 | **Meeting-hall population sizing** | Low | Confirm the hall grows past the furniture box without swallowing corridors |
 | **Grazing pasture + farmer workshop** | Medium | Confirm the zone is created on grass and the workshop lands adjacent |
 | **Elven caravan detection** | Low | Needs an elven caravan on the map |
 
-### The one to be careful with
+### The one to be careful with — resolved: it could never have worked
 
-`antfarm_military create` is the highest-risk code in the project. This DFHack
-build has no `dfhack.military` module and no `assignNoblePosition`, so squad
-creation writes `df.squad`, `df.squad_position`, `df.squad_schedule_entry` and
-the uniform specs directly. It is a faithful port of df-ai's
-`military_find_free_squad`, which drove unattended 0.47 forts for years, but a
-port is not a test.
+`antfarm_military create` built `df.squad` by hand, ported from df-ai's
+`military_find_free_squad`. Tested 2026-10-31 on a **detached** squad that was
+never linked into the world: `squad.schedule` is a
+`vector<squad_schedule_entry[12]*>` (one contiguous twelve-month block per
+alert, which df-ai allocated with a raw `malloc`), and DFHack 0.47 Lua rejects
+every way of building one: `Cannot allocate arrays of non-primitive types`,
+and inserting a table of twelve entries is refused. Each attempt would have
+failed at the schedule step after consuming a squad id; the world-linking-last
+ordering meant it never corrupted anything.
 
-Two deliberate safety properties, which should not be "tidied away":
-
-* It is **not** called from `tick()`. Only `enlist` (into squads DF already
-  accepted) and schedule retuning run autonomously.
-* World-linking (`world.squads.all`, `ui.squads.list`, `entity.squads`) happens
-  **last**. Everything before it builds a detached object, so a raise anywhere —
-  the schedule construction is the least certain part, since DF stores twelve
-  entries per alert as one block — unwinds with nothing referenced by the world.
-  A partially-linked squad is corruption; a leaked unreferenced one is garbage.
+It now refuses up front and points at DF's military screen (`m`, then `c`).
+`enlist` writes the same three fields df-ai's `military_find_new_soldier` does
+and only touches squads DF itself created. Creating squads automatically would
+need a `start_driver()` UI driver for the military screen, like the petition
+driver.
 
 ---
 
@@ -338,7 +337,8 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
    forge (Dreamfort `/industry2`, step 10) or the trade driver below.
 2. **Strange moods, second half** — production, butchering and an opt-in
    `createitem` for demands nothing in the fort matches.
-3. **Verify `antfarm_military create`** once by hand, then let enlistment run.
+3. **Military-screen driver** — the only way to create squads unattended in
+   0.47 (`antfarm_military create` was proven impossible from Lua).
 4. **Trade-screen driver** — the only path to iron on this map.
 5. **Locations**, then flip the petition handler from decline to accept.
 6. **Justice**, reusing the orders module's impossible-vs-not-yet logic.

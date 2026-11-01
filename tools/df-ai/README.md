@@ -18,6 +18,7 @@ encodes a failure someone already hit. `antfarm_ui.lua` is largely a port of its
 `pause.cpp`/`ai.cpp`; `antfarm_military.lua` is a port of the military half of
 `population.rb`.
 
-Note that a port is not a test: `antfarm_military create` writes `df.squad`
-structures by hand and has not yet been exercised against a live fort. See
+Note that a port is not a test: the squad-creation half could not be ported.
+df-ai mallocs each alert's twelve-month schedule block, which DFHack 0.47 Lua
+cannot allocate, so `antfarm_military create` now refuses. See
 `docs/ROADMAP.md` §2.

@@ -94,10 +94,13 @@ class HighRiskGuidance(unittest.TestCase):
             lua,
         )
         self.assertIsNotNone(match, "military check must retain a fix explanation")
-        self.assertIn("HIGH RISK / MANUAL", match.group(1))
-        self.assertIn("disposable fort", match.group(1))
+        # Script-side squad creation was proven impossible on 0.47.05-r8; the
+        # fix must send the operator to DF's own military screen instead.
+        self.assertIn("MANUAL", match.group(1))
+        self.assertIn("military screen", match.group(1))
+        self.assertNotIn("run antfarm_military create", match.group(1))
         self.assertIn("docs/ROADMAP.md", match.group(1))
-        self.assertIn("disposable test fort", docs)
+        self.assertIn("military screen", docs)
         self.assertNotIn(
             "| military exists | at least one squad | "
             "`antfarm_military create` then `enlist` |",

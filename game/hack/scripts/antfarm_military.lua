@@ -12,18 +12,15 @@
 -- per CLAUDE.md, port that rather than reinvent it. Enlistment and schedule
 -- tuning are ports of `update_military` / `military_find_new_soldier`.
 --
--- SAFETY: `create` builds df.squad structures by hand, because this DFHack has
--- no dfhack.military module. That is the highest-risk operation in the project,
--- so it is NOT run from tick() -- it is an explicit verb, and it must be
--- verified once against a live fort before being trusted. Everything tick()
--- does (enlist into existing squads, retune schedules) only touches squads DF
--- already accepted.
+-- Squads themselves cannot be created from Lua in this build; see
+-- create_squad(). Everything tick() does (enlist into existing squads, retune
+-- schedules) only touches squads DF itself created.
 --
 -- Usage:
 --   antfarm_military              report squads, soldiers and uniforms
 --   antfarm_military enlist       fill existing squads from the population
 --   antfarm_military schedule     retune training minimums
---   antfarm_military create       create a squad (manual, see SAFETY above)
+--   antfarm_military create       explains why it cannot, and what to do
 
 --@module = true
 
@@ -140,7 +137,7 @@ end
 function enlist()
     local squads = fort_squads()
     if #squads == 0 then
-        return {}, 'no squads exist yet -- run `antfarm_military create` first'
+        return {}, 'no squads exist yet -- create one in the military screen (m, then c)'
     end
     local able = draftable()
     local target = math.floor(#able / SOLDIER_RATIO)
@@ -225,99 +222,22 @@ function retune_schedules()
 end
 
 -- ---------------------------------------------------------------- --
--- squad creation (manual; see SAFETY at the top)                   --
+-- squad creation: not possible from Lua in this build                --
 -- ---------------------------------------------------------------- --
 
-local UNIFORM_SLOTS = {
-    {slot = 'Body',   item = 'ARMOR'},
-    {slot = 'Head',   item = 'HELM'},
-    {slot = 'Pants',  item = 'PANTS'},
-    {slot = 'Gloves', item = 'GLOVES'},
-    {slot = 'Shoes',  item = 'SHOES'},
-    {slot = 'Shield', item = 'SHIELD'},
-    {slot = 'Weapon', item = 'WEAPON'},
-}
-
+-- This used to build a df.squad by hand, ported from df-ai's
+-- military_find_free_squad. It cannot work here, measured on 0.47.05-r8:
+-- `squad.schedule` is a vector<squad_schedule_entry[12]*> -- one contiguous
+-- block of twelve months per alert, which df-ai allocated with a raw malloc --
+-- and DFHack's Lua refuses both ways of making one ("Cannot allocate arrays of
+-- non-primitive types"; inserting a table of twelve entries is rejected too).
+-- Every attempt would have failed at the schedule step after already
+-- consuming a squad id. So refuse up front, touch nothing, and say what works:
+-- create the squad in DF's own military screen, then let enlist() fill it.
 function create_squad()
-    local ent = fort_entity()
-    if not ent then return false, 'no fort entity' end
-
-    -- A squad with no commander is not commandable; nobles fills that post.
-    local has_officer = false
-    pcall(function()
-        for _, a in ipairs(ent.positions.assignments) do
-            if a.histfig ~= -1 then has_officer = true end
-        end
-    end)
-    if not has_officer then
-        return false, 'appoint a militia commander first (antfarm_nobles appoint)'
-    end
-
-    local ok, err = pcall(function()
-        local sid = df.global.squad_next_id
-        df.global.squad_next_id = sid + 1
-
-        local squad = df.squad:new()
-        squad.id = sid
-        squad.entity_id = ent.id
-        squad.name.first_name = 'Antfarm Squad ' .. tostring(sid)
-        squad.name.has_name = true
-        squad.cur_alert_idx = 1      -- the training alert
-        squad.uniform_priority = 2
-        squad.carry_food = 2
-        squad.carry_water = 2
-
-        for _ = 1, SQUAD_SLOTS do
-            local pos = df.squad_position:new()
-            for _, u in ipairs(UNIFORM_SLOTS) do
-                local spec = df.squad_uniform_spec:new()
-                spec.color = -1
-                spec.item_filter.item_type = df.item_type[u.item]
-                spec.item_filter.material_class = df.entity_material_category.Armor
-                spec.item_filter.mattype = -1
-                spec.item_filter.matindex = -1
-                pos.uniform[df.uniform_category[u.slot]]:insert('#', spec)
-            end
-            -- The weapon slot is a melee choice, not an armour-class match.
-            local w = pos.uniform[df.uniform_category.Weapon][0]
-            w.indiv_choice.melee = true
-            w.item_filter.material_class = df.entity_material_category.None
-            pos.flags.exact_matches = true
-            squad.positions:insert('#', pos)
-        end
-
-        -- One schedule block per alert, twelve months each: train two months in
-        -- three, leaving the third free so needs recover.
-        for _ = 0, #df.global.ui.alerts.list - 1 do
-            local months = {}
-            for i = 0, 11 do
-                local scm = df.squad_schedule_entry:new()
-                for _ = 1, SQUAD_SLOTS do scm.order_assignments:insert('#', -1) end
-                if i % 3 ~= 0 then
-                    local order = df.squad_order_trainst:new()
-                    local so = df.squad_schedule_order:new()
-                    so.min_count = 0
-                    so.order = order
-                    scm.orders:insert('#', so)
-                end
-                months[i] = scm
-            end
-            squad.schedule:insert('#', months)
-        end
-
-        -- Linking into the world happens LAST, on purpose. Everything above
-        -- builds a detached object, so if any of it raises -- the schedule
-        -- construction is the least certain part, since DF stores twelve
-        -- entries per alert as one block -- the pcall unwinds with nothing
-        -- referenced by the world. A partially-linked squad would be
-        -- corruption; a leaked unreferenced one is merely garbage.
-        df.global.world.squads.all:insert('#', squad)
-        df.global.ui.squads.list:insert('#', squad)
-        ent.squads:insert('#', squad.id)
-    end)
-
-    if not ok then return false, 'squad creation failed: ' .. tostring(err) end
-    return true, 'squad created'
+    return false, 'cannot create squads from DFHack 0.47 Lua (the per-alert '
+        .. 'schedule block cannot be allocated). Create one in the military '
+        .. 'screen (m, then c); `antfarm_military enlist` fills existing squads.'
 end
 
 -- ---------------------------------------------------------------- --
@@ -375,12 +295,8 @@ if verb == 'enlist' then
 elseif verb == 'schedule' then
     print(('antfarm_military: retuned %d training order(s)'):format(retune_schedules()))
 elseif verb == 'create' then
-    local ok, msg = create_squad()
+    local _, msg = create_squad()
     print('antfarm_military: ' .. tostring(msg))
-    if ok then
-        print('antfarm_military: VERIFY IN GAME before relying on this -- open the')
-        print('antfarm_military: military screen and confirm the squad is usable.')
-    end
 else
     local squads = fort_squads()
     local able = #draftable()
