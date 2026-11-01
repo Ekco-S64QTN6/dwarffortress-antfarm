@@ -90,7 +90,8 @@ game/  (Dwarf Fortress + DFHack, Lua)          antfarm/  (Python)
   antfarm_quarters.lua bedrooms; queues workshop furniture orders, counts
                         outstanding orders, and only schedules bed construction
                         when a free finished BED item exists
-  antfarm_military.lua squads/training
+  antfarm_military.lua squads/training; asks antfarm_ui's military-screen
+                        driver for a squad when below target
   antfarm_mood.lua     strange moods: demands, unforbid, missing workshop,
                         butcher for parts/leather, production orders,
                         opt-in last-resort createitem

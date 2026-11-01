@@ -161,7 +161,7 @@ session and produced the stated effect:
 | :-- | :-- | :-- |
 | **Subsystem tick dispatcher** | Low | Confirm `subsystems` in `antfarm_state.json` updates and that each module's notes appear over ~15 min |
 | **State aggregator rewrite** | Low | Confirm `housing.shortfall`, `trade.has_depot`, `metals.missing` show real values, not `0`/`true`/`[1,2]` |
-| **`antfarm_military` enlist / schedule** | Medium | Needs an existing squad; confirm dwarves get `military.squad_id` set and training min_count is `filled-1` |
+| **`antfarm_military` enlist / schedule** | Medium | **Enlist verified live 2026-11-01** against a squad the new driver created: target 1 soldier for 7 able citizens, the commander DF seats in position 0 counted, nobody extra drafted. Schedule `min_count` still unverified |
 | **`antfarm_military create`** | — | **Resolved 2026-10-31: impossible in this build, now refuses.** See below |
 | **Meeting-hall population sizing** | Low | Confirm the hall grows past the furniture box without swallowing corridors |
 | **Grazing pasture + farmer workshop** | Medium | Confirm the zone is created on grass and the workshop lands adjacent |
@@ -179,11 +179,24 @@ and inserting a table of twelve entries is refused. Each attempt would have
 failed at the schedule step after consuming a squad id; the world-linking-last
 ordering meant it never corrupted anything.
 
-It now refuses up front and points at DF's military screen (`m`, then `c`).
 `enlist` writes the same three fields df-ai's `military_find_new_soldier` does
-and only touches squads DF itself created. Creating squads automatically would
-need a `start_driver()` UI driver for the military screen, like the petition
-driver.
+and only touches squads DF itself created.
+
+**Resolved 2026-11-01: squads are created through DF's own military screen.**
+`antfarm_ui`'s `squad` driver (a `start_driver()` coroutine, like petitions)
+was mapped against the live screen and verified on `region_smoke`:
+`D_MILITARY` opens `viewscreen_layer_militaryst` on page 0 with
+`squads.list[i] == nil` for each leader position that has no squad;
+the driver moves `layer_objects[0].cursor` to that slot, presses
+`D_MILITARY_CREATE_SQUAD` (`in_create_squad` turns true: the uniform choice),
+`SELECT`, and reads success only from the fort entity's squad count, then
+`LEAVESCREEN`. Live: 0 → 1 squad, back on `dwarfmode/Default`, no driver
+failure, the game ran on normally. `antfarm_military` asks for a squad when
+soldier slots are below df-ai's one-in-five target and an appointed leader
+(militia commander, captain...) has none -- only while a client drives the
+fort; `antfarm_military create` / `antfarm_ui squad` run it once on the
+operator's say-so. The first uniform entry is taken; choosing armour is still
+manual.
 
 ---
 
@@ -346,8 +359,8 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
    forge (Dreamfort `/industry2`, step 10) or the trade driver below.
 2. ~~**Strange moods, second half**~~ — done 2026-11-01 (§3.2). Left: smelting
    for bar demands, cloth, logs.
-3. **Military-screen driver** — the only way to create squads unattended in
-   0.47 (`antfarm_military create` was proven impossible from Lua).
+3. ~~**Military-screen driver**~~ — done 2026-11-01 (§2). Left: picking a
+   uniform instead of the first entry.
 4. **Trade-screen driver** — the only path to iron on this map.
 5. **Locations**, then flip the petition handler from decline to accept.
 6. **Justice**, reusing the orders module's impossible-vs-not-yet logic.

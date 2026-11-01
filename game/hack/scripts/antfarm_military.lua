@@ -12,15 +12,15 @@
 -- per CLAUDE.md, port that rather than reinvent it. Enlistment and schedule
 -- tuning are ports of `update_military` / `military_find_new_soldier`.
 --
--- Squads themselves cannot be created from Lua in this build; see
--- create_squad(). Everything tick() does (enlist into existing squads, retune
--- schedules) only touches squads DF itself created.
+-- Squads cannot be built from Lua in this build, so create_squad() drives DF's
+-- own military screen instead (antfarm_ui). Everything else tick() does
+-- (enlist, retune schedules) only touches squads DF itself created.
 --
 -- Usage:
 --   antfarm_military              report squads, soldiers and uniforms
 --   antfarm_military enlist       fill existing squads from the population
 --   antfarm_military schedule     retune training minimums
---   antfarm_military create       explains why it cannot, and what to do
+--   antfarm_military create       create a squad through the military screen
 
 --@module = true
 
@@ -137,7 +137,7 @@ end
 function enlist()
     local squads = fort_squads()
     if #squads == 0 then
-        return {}, 'no squads exist yet -- create one in the military screen (m, then c)'
+        return {}, 'no squads exist yet -- `antfarm_military create` makes one through the military screen'
     end
     local able = draftable()
     local target = math.floor(#able / SOLDIER_RATIO)
@@ -231,13 +231,47 @@ end
 -- block of twelve months per alert, which df-ai allocated with a raw malloc --
 -- and DFHack's Lua refuses both ways of making one ("Cannot allocate arrays of
 -- non-primitive types"; inserting a table of twelve entries is rejected too).
--- Every attempt would have failed at the schedule step after already
--- consuming a squad id. So refuse up front, touch nothing, and say what works:
--- create the squad in DF's own military screen, then let enlist() fill it.
-function create_squad()
-    return false, 'cannot create squads from DFHack 0.47 Lua (the per-alert '
-        .. 'schedule block cannot be allocated). Create one in the military '
-        .. 'screen (m, then c); `antfarm_military enlist` fills existing squads.'
+--
+-- So squads are created the way a player creates them: antfarm_ui's
+-- military-screen driver (m, c, Enter), mapped against a live fort and
+-- verified to produce a real squad. Nothing here writes a squad structure.
+
+-- Appointed squad leaders (militia commander, captains...) who have no squad:
+-- each is a squad DF's military screen will let us create.
+function leaders_without_squad()
+    local ent = fort_entity()
+    local out = {}
+    if not ent then return out end
+    pcall(function()
+        local by_id = {}
+        for i = 0, #ent.positions.own - 1 do
+            local p = ent.positions.own[i]
+            by_id[p.id] = p
+        end
+        for i = 0, #ent.positions.assignments - 1 do
+            local a = ent.positions.assignments[i]
+            local p = by_id[a.position_id]
+            if p and p.squad_size > 0 and a.histfig ~= -1 and a.squad_id == -1 then
+                table.insert(out, p.code)
+            end
+        end
+    end)
+    return out
+end
+
+local function ui()
+    local ok, mod = pcall(reqscript, 'antfarm_ui')
+    return ok and type(mod) == 'table' and mod or nil
+end
+
+function create_squad(operator)
+    if #leaders_without_squad() == 0 then
+        return false, 'every appointed squad leader already has a squad (antfarm_nobles '
+            .. 'appoints the militia commander and captains)'
+    end
+    local u = ui()
+    if not u or not u.request_squad then return false, 'antfarm_ui unavailable' end
+    return u.request_squad(operator)
 end
 
 -- ---------------------------------------------------------------- --
@@ -252,7 +286,17 @@ function tick()
     local now = (dfhack.getTickCount() or 0) / 1000
     if now - antfarm_military_state.last_run < RUN_INTERVAL_SEC then return end
     antfarm_military_state.last_run = now
-    -- Deliberately does NOT create squads: see SAFETY at the top of the file.
+    -- Below df-ai's one-soldier-in-five target with a leader free to lead a
+    -- squad: ask the UI driver for one. It only runs while a client drives the
+    -- fort, and enlist() fills the new squad on a later pass.
+    local okr, rep = pcall(report)
+    if okr and rep.slots < rep.target and #leaders_without_squad() > 0 then
+        local okc, created, why = pcall(create_squad)
+        if okc and created then
+            table.insert(antfarm_military_state.notes, 1,
+                ('%d soldier(s) wanted, %d slot(s): creating a squad'):format(rep.target, rep.slots))
+        end
+    end
     local ok, done = pcall(enlist)
     if ok then
         for _, m in ipairs(done) do
@@ -295,7 +339,7 @@ if verb == 'enlist' then
 elseif verb == 'schedule' then
     print(('antfarm_military: retuned %d training order(s)'):format(retune_schedules()))
 elseif verb == 'create' then
-    local _, msg = create_squad()
+    local _, msg = create_squad(true)
     print('antfarm_military: ' .. tostring(msg))
 else
     local squads = fort_squads()

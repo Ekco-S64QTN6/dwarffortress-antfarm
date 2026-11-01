@@ -317,6 +317,18 @@ Future agents working on this codebase MUST review these documented pitfalls bef
     must also be idle ("has active job, cannot start mood"); retry until one is.
 17. **Raw material value is `raws.inorganics[i].material.material_value`**
     (copper 2, tin 2, iron 10, gold 30, adamantine 300).
+18. **The military screen, as mapped live (0.47.05-r8).** `D_MILITARY` from
+    dwarfmode opens `viewscreen_layer_militaryst` (focus
+    `layer_military/Positions/Squads`, `page == 0`). `squads.list[i]` is `nil`
+    for a leader position with no squad; `squads.leader_assignments[i].histfig`
+    says whether that post is filled; `layer_objects[0]` is the list, with
+    `cursor`. `D_MILITARY_CREATE_SQUAD` sets `in_create_squad` (uniform choice),
+    `SELECT` creates the squad (`historical_entity.squads` grows) and returns to
+    the list. DF seats the leader in position 0 of the new squad.
+19. **`dfhack.gui.getCurFocus()` returns a string in 0.47**, not v50's list:
+    `getCurFocus(true)[1]` is `nil`.
+20. **`./dfhack-run die` can take a few seconds to exit.** Wait for the process
+    to be gone before touching the save directory.
 
 ### 6.2. Critical Game Stability Fixes & Settings
 

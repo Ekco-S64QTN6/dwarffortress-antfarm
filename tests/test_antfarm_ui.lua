@@ -406,5 +406,112 @@ do
                                               env.report().failures))
 end
 
+
+-- ---------------------------------------------------------------- --
+-- Military screen: create a squad, as mapped on a live fort.
+-- squads.list holds nil for a leader position with no squad yet, so it is a
+-- fixed-length table with holes rather than a stub vector.
+local function military_world(slots, opts)
+    opts = opts or {}
+    local w, env = fresh()
+    local entity = {squads = stub.vector{}}
+    w.df.global.ui.group_id = 1
+    w.df.historical_entity = {find = function(id) return id == 1 and entity or nil end}
+    local list_items = {}
+    local assignments = {}
+    for i, s in ipairs(slots) do
+        list_items[i - 1] = s.squad
+        assignments[i - 1] = {histfig = s.leader and 42 or -1}
+    end
+    local n = #slots
+    local function fixed(t) return setmetatable({}, {__len = function() return n end,
+                                                     __index = function(_, i) return t[i] end}) end
+    local list_obj = {cursor = 0}
+    local view = {vtype = 'viewscreen_layer_militaryst', page = 0, in_create_squad = false,
+                  squads = {list = fixed(list_items), leader_assignments = fixed(assignments)},
+                  layer_objects = stub.vector{list_obj}}
+    w.on_key = function(scr, key)
+        if key == 'D_MILITARY' and w.top().vtype == 'viewscreen_dwarfmodest' then w.push(view) end
+        if w.top() ~= view then return end
+        if key == 'STANDARDSCROLL_DOWN' then list_obj.cursor = math.min(n - 1, list_obj.cursor + 1) end
+        if key == 'STANDARDSCROLL_UP' then list_obj.cursor = math.max(0, list_obj.cursor - 1) end
+        if key == 'D_MILITARY_CREATE_SQUAD' and list_items[list_obj.cursor] == nil then
+            view.in_create_squad = true
+        end
+        if key == 'SELECT' and view.in_create_squad then
+            view.in_create_squad = false
+            if not opts.select_fails then
+                local sq = {id = 35}
+                list_items[list_obj.cursor] = sq
+                entity.squads:push(35)
+            end
+        end
+        if key == 'LEAVESCREEN' then
+            if view.in_create_squad then view.in_create_squad = false else w.pop() end
+        end
+    end
+    return w, env, entity, list_obj
+end
+
+do
+    -- Slot 0 already has a squad; slot 1's leader has none. Move down, create, leave.
+    local w, env, entity = military_world({{leader = true, squad = {id = 1}}, {leader = true}})
+    env.set_screens_enabled(true)
+    local ok = env.request_squad()
+    run(env, w, 4000)
+    local keys = table.concat(w.keys_pressed(), ',')
+    check('military: the driver starts while a client drives the fort', ok)
+    check('military: it moves to the empty slot, creates and confirms',
+          keys == 'D_MILITARY,STANDARDSCROLL_DOWN,D_MILITARY_CREATE_SQUAD,SELECT,LEAVESCREEN', keys)
+    check('military: a squad now exists', #entity.squads == 1)
+    check('military: back on the fort map', w.top().vtype == 'viewscreen_dwarfmodest', w.top().vtype)
+    check('military: counted in the report', env.report().squads_created == 1)
+end
+
+do
+    -- DF queues keys and applies them a frame later; the driver must wait for
+    -- state, not assume it.
+    local w, env, entity = military_world({{leader = true}})
+    w.async_keys = true
+    env.set_screens_enabled(true)
+    env.request_squad()
+    for _ = 1, 40 do w.advance(200); env.tick(); w.flush_keys() end
+    check('military: works with keys applied on a later frame', #entity.squads == 1)
+    check('military (async): back on the fort map', w.top().vtype == 'viewscreen_dwarfmodest', w.top().vtype)
+end
+
+do
+    local w, env = military_world({{leader = true}})
+    local ok, why = env.request_squad()
+    run(env, w, 2000)
+    check('military: never drives the UI without a client', not ok and #w.keys_pressed() == 0, why)
+    local ok2 = env.request_squad(true)
+    run(env, w, 4000)
+    check('military: an operator command is permission for one run', ok2 and has(w.keys_pressed(), 'SELECT'))
+    check('military: and it does not leave screen dismissal switched on', env.report().screens_enabled == false)
+end
+
+do
+    -- No leader without a squad: open, look, leave -- never press create.
+    local w, env, entity = military_world({{leader = true, squad = {id = 1}}, {leader = false}})
+    env.set_screens_enabled(true)
+    env.request_squad()
+    run(env, w, 4000)
+    check('military: no creatable slot means no create key', not has(w.keys_pressed(), 'D_MILITARY_CREATE_SQUAD'),
+          table.concat(w.keys_pressed(), ','))
+    check('military: and the screen is closed again', w.top().vtype == 'viewscreen_dwarfmodest')
+end
+
+do
+    -- SELECT that creates nothing: report it, back out, do not loop.
+    local w, env, entity = military_world({{leader = true}}, {select_fails = true})
+    env.set_screens_enabled(true)
+    env.request_squad()
+    run(env, w, 8000)  -- the driver waits ~20 polls for a squad before giving up
+    check('military: a failed confirm creates nothing and returns to the map',
+          #entity.squads == 0 and w.top().vtype == 'viewscreen_dwarfmodest', w.top().vtype)
+    check('military: and it pressed SELECT only once', count(w.keys_pressed(), 'SELECT') == 1)
+end
+
 print(('\n%d passed, %d failed'):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

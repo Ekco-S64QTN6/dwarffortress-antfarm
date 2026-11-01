@@ -28,6 +28,7 @@ local VIEWSCREENS = {
     'viewscreen_export_graphical_mapst', 'viewscreen_legendsst', 'viewscreen_dungeonmodest',
     'viewscreen_game_cleanerst', 'viewscreen_layer_world_gen_paramst',
     'viewscreen_layer_world_gen_param_presetst', 'viewscreen_unitst',
+    'viewscreen_layer_militaryst',
 }
 
 -- Announcement types the tests care about; the real enum has 339.

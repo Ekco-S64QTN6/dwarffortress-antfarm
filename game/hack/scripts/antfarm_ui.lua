@@ -125,7 +125,7 @@ antfarm_ui = antfarm_ui or {
     driver_retry_at = 0,  -- wall ms before which we will not start another
 
     log = {},
-    stats = {popups = 0, screens = 0, failures = 0, unpauses = 0, petitions = 0},
+    stats = {popups = 0, screens = 0, failures = 0, unpauses = 0, petitions = 0, squads = 0},
 }
 
 local function wall_ms()
@@ -850,6 +850,120 @@ function check_petitions()
 end
 
 -- ---------------------------------------------------------------- --
+-- military: create a squad                                         --
+-- ---------------------------------------------------------------- --
+-- DFHack 0.47 Lua cannot build a df.squad (antfarm_military.lua has the
+-- measurement), so the only unattended way to get one is DF's own military
+-- screen. Mapped against a live fort (region_smoke, 2026-11-01):
+--
+--   dwarfmode --D_MILITARY--> viewscreen_layer_militaryst, page 0, focus
+--     layer_military/Positions/Squads. squads.list[i] is nil for a leader
+--     position that has no squad yet; layer_objects[0] is that list.
+--   --D_MILITARY_CREATE_SQUAD--> in_create_squad = true (the uniform choice)
+--   --SELECT--> the squad exists (fort entity squads +1), back on the list
+--   --LEAVESCREEN--> dwarfmode
+--
+-- Every step is checked before the next key, and success is only ever read
+-- from the fort entity's squad count, never assumed from the keys sent.
+
+local function fort_squad_count()
+    local n = 0
+    pcall(function() n = #df.historical_entity.find(df.global.ui.group_id).squads end)
+    return n
+end
+
+-- The first squad slot whose leader position is filled and has no squad.
+local function creatable_slot(view)
+    local slot
+    pcall(function()
+        for i = 0, #view.squads.list - 1 do
+            local a = view.squads.leader_assignments[i]
+            if view.squads.list[i] == nil and a and a.histfig ~= -1 then
+                slot = i
+                return
+            end
+        end
+    end)
+    return slot
+end
+
+local function wait_for(pred, tries)
+    for _ = 1, tries or 20 do
+        local ok, hit = pcall(pred)
+        if ok and hit then return true end
+        coroutine.yield()
+    end
+    return false
+end
+
+local function on_military()
+    return is_a('viewscreen_layer_militaryst', select(1, current_screen()))
+end
+
+local function squad_body(d)
+    if not is_dwarfmode() then return end
+    d:expect('viewscreen_dwarfmodest')
+    d:key('D_MILITARY')
+    local view = d:expect('viewscreen_layer_militaryst')
+    local function leave()
+        if on_military() then d:key('LEAVESCREEN') end
+        d:expect('viewscreen_dwarfmodest')
+    end
+
+    if view.page ~= 0 then  -- 0 = Positions, where DF opens; verify anyway
+        note('military', 'the military screen did not open on its positions page')
+        return leave()
+    end
+    local slot = creatable_slot(view)
+    if not slot then
+        note('military', 'no appointed squad leader is without a squad')
+        return leave()
+    end
+
+    local list = view.layer_objects[0]
+    local guard = 0
+    while list.cursor ~= slot and guard < 40 do
+        guard = guard + 1
+        d:key(list.cursor < slot and 'STANDARDSCROLL_DOWN' or 'STANDARDSCROLL_UP')
+        if not on_military() then error('the military screen closed while moving the cursor') end
+    end
+    if list.cursor ~= slot then
+        note('military', ('could not move the squad cursor to slot %d'):format(slot))
+        return leave()
+    end
+
+    local before = fort_squad_count()
+    d:key('D_MILITARY_CREATE_SQUAD')
+    if not wait_for(function() return view.in_create_squad end) then
+        note('military', 'create-squad did not open the uniform choice')
+        return leave()
+    end
+    d:key('SELECT')
+    if wait_for(function() return fort_squad_count() > before end) then
+        antfarm_ui.stats.squads = (antfarm_ui.stats.squads or 0) + 1
+        note('squad created', ('squad %d of the fort, in the military screen'):format(fort_squad_count()))
+    else
+        note('military', 'SELECT on the uniform choice did not create a squad')
+        if on_military() and view.in_create_squad then d:key('LEAVESCREEN') end
+    end
+    leave()
+end
+
+-- Ask for a squad. Only while a client is driving the fort -- never take the
+-- UI away from a human who is playing -- unless the operator asked directly
+-- (`operator` = true, from a typed command), which is permission for this one run.
+function request_squad(operator)
+    if not antfarm_ui.screens_enabled and not operator then
+        return false, 'no client is driving the fort, so the UI is left alone'
+    end
+    if not is_dwarfmode() then return false, 'not on the fort map' end
+    if start_driver('military', squad_body) then
+        return true, 'the military-screen driver is creating a squad'
+    end
+    return false, 'another UI driver is running or cooling down'
+end
+
+-- ---------------------------------------------------------------- --
 -- entry points                                                     --
 -- ---------------------------------------------------------------- --
 
@@ -933,6 +1047,7 @@ function report()
         popups_dismissed = antfarm_ui.stats.popups,
         screens_dismissed = antfarm_ui.stats.screens,
         petitions_answered = antfarm_ui.stats.petitions,
+        squads_created = antfarm_ui.stats.squads or 0,
         unpauses = antfarm_ui.stats.unpauses,
         failures = antfarm_ui.stats.failures,
         log = entries,
@@ -1023,6 +1138,10 @@ elseif verb == 'unpause' then
 elseif verb == 'petitions' then
     print(('antfarm_ui: %d pending petition(s)'):format(petition_count()))
     if not check_petitions() then print('  nothing to do (or a driver is already running)') end
+elseif verb == 'squad' then
+    -- Operator-initiated: a typed command is permission for this one driver run.
+    local ok, why = request_squad(true)
+    print('antfarm_ui: ' .. tostring(why))
 elseif verb == 'on' then
     set_screens_enabled(true)
     print('antfarm_ui: viewscreen dismissal ON')
@@ -1030,5 +1149,5 @@ elseif verb == 'off' then
     set_screens_enabled(false)
     print('antfarm_ui: viewscreen dismissal off')
 else
-    print('usage: antfarm_ui [status|screen|dismiss|unpause|petitions|on|off]')
+    print('usage: antfarm_ui [status|screen|dismiss|unpause|petitions|squad|on|off]')
 end
