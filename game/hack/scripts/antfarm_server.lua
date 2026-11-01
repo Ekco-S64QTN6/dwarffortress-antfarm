@@ -672,6 +672,34 @@ local function subsystems_summary()
         }
     end)
 
+    -- Moods carry nested arrays; each level needs arr() or an empty list
+    -- encodes as a JSON object.
+    ask('antfarm_mood', function(rep)
+        local moods = {}
+        for _, m in ipairs(rep.moods or {}) do
+            local reqs = {}
+            for _, q in ipairs(m.requirements or {}) do
+                table.insert(reqs, {what = q.what, need = q.need, got = q.got,
+                                    free = q.free, forbidden = q.forbidden})
+            end
+            table.insert(moods, {name = m.name, mood = m.mood, timeout = m.timeout,
+                                 unmet = m.unmet or 0, impossible = m.impossible or 0,
+                                 requirements = arr(reqs)})
+        end
+        local function names(list)
+            local out = {}
+            for _, x in ipairs(list or {}) do
+                table.insert(out, {name = x.name, mood = x.mood})
+            end
+            return arr(out)
+        end
+        summary.mood = {
+            moods = arr(moods),
+            waiting = names(rep.waiting),
+            failed = names(rep.failed),
+        }
+    end)
+
     ask('antfarm_sustenance', function(rep)
         summary.sustenance = {
             drink = rep.drink or 0,
@@ -1132,11 +1160,12 @@ local function check_heartbeat()
 end
 
 -- Fort-management subsystems, in the order they matter when several have work
--- queued in the same cycle: stop wasting effort first (orders), then unblock
+-- queued in the same cycle: a mood first (a stalled one loses a dwarf for
+-- good), then food and drink, then stop wasting effort (orders), then unblock
 -- the fort's only source of what it cannot make (trade), then people, rooms and
 -- defence.
 local SUBSYSTEMS = {
-    'antfarm_sustenance', 'antfarm_orders', 'antfarm_trade', 'antfarm_nobles',
+    'antfarm_mood', 'antfarm_sustenance', 'antfarm_orders', 'antfarm_trade', 'antfarm_nobles',
     'antfarm_locations', 'antfarm_quarters', 'antfarm_defence',
     'antfarm_military',
 }

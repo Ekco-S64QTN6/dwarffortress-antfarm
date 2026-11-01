@@ -65,6 +65,17 @@ finding-by-finding review of the earlier report.
    `unknown`. A missing office is a strong hypothesis for a mature fort, but the
    population and office state at the time of the original 61-order capture were
    not preserved; keep the diagnosis open until the audit is run on that save.
+
+   **Live measurement, 2026-10-31 (`region1`, Erushavuz, 7 citizens, no manager
+   office, `not_required`):** 46 orders imported from `library/basic` while the
+   game was paused showed `validated=no` on every one. Two in-game days after the
+   watchdog unpaused, 50 of 53 were validated (the 3 stragglers had just been
+   created by `/surface2`); about nine days after load all 53 were, with 17
+   active and the first order-driven jobs (MakeTool, MakeCage, MakeBucket,
+   ConstructSplint) at workshops. So below 20 citizens validation works without
+   an office, and needs only game time. **An audit taken while paused, or
+   immediately after an import, will show every order unvalidated; that is not
+   by itself a fault.** The original 61-order fort remains unexplained.
 3. **I crashed the fort chasing that.** Writing `status.validated`/`status.active`
    across the order list segfaulted DF silently — no error, no core, nothing in
    the log. Recorded as AGENTS.md 6.1.12: read those bits, never write them. The
@@ -119,6 +130,9 @@ finding-by-finding review of the earlier report.
 | **Dreamfort order-library retry** | PR #21 records an import as complete only after DFHack returns `CR_OK`; rejected imports remain pending and are retried after a later completed build step |
 | **Autolabor command observability** | PR #22 checks `CR_OK` for MINE/CUTWOOD/HERBALIST/PLANT and publishes rejected command settings rather than claiming success; Lua tests cover return-code and thrown-error paths |
 | **Post-job assignment gap** | PR #23 merged with passing CI; DFHack `workNow 2` pokes assignment when a dwarf finishes a job. It reduces post-job idle delay but does not create jobs or bypass labor eligibility |
+| **A still with no brew orders** | Live `region1` sat at build step 4 with a finished still and `orders_done` empty: `library/basic` waits for step 5, which waits on surface digging. `antfarm_sustenance` now imports it once a still is finished, via `antfarm_blueprint.import_order_library()`, which also adopts brew orders already in the fort instead of duplicating 46 orders after a re-anchor. **Verified live:** imported on load, recorded in the plan, not re-imported at step 6; all 53 orders validated about nine in-game days after load |
+| **The idle dwarves** | `prioritize -j` and `autolabor status` on the live fort: the only unclaimed work was 59 dig/stair jobs, so four dwarves had nothing they *could* do. Once step 5 placed workshops and stockpiles, every dwarf had a job |
+| **A pick on the floor** | `tune_labour()` set each tool labour's minimum to 1, below DFHack's MINE default of 2; past the minimum autolabor only adds skilled dwarves or acts when 2+ are idle (`autolabor.cpp`, 0.47.05-r8). 110 dig jobs had one miner. Minimum now equals the tool count. **Verified live:** both picks held, two dig jobs worked |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
@@ -148,29 +162,28 @@ session and produced the stated effect:
 | **Subsystem tick dispatcher** | Low | Confirm `subsystems` in `antfarm_state.json` updates and that each module's notes appear over ~15 min |
 | **State aggregator rewrite** | Low | Confirm `housing.shortfall`, `trade.has_depot`, `metals.missing` show real values, not `0`/`true`/`[1,2]` |
 | **`antfarm_military` enlist / schedule** | Medium | Needs an existing squad; confirm dwarves get `military.squad_id` set and training min_count is `filled-1` |
-| **`antfarm_military create`** | **High** | Builds `df.squad` by hand. Run once manually, then open the military screen and confirm the squad is usable, nameable and assignable |
+| **`antfarm_military create`** | — | **Resolved 2026-10-31: impossible in this build, now refuses.** See below |
 | **Meeting-hall population sizing** | Low | Confirm the hall grows past the furniture box without swallowing corridors |
 | **Grazing pasture + farmer workshop** | Medium | Confirm the zone is created on grass and the workshop lands adjacent |
 | **Elven caravan detection** | Low | Needs an elven caravan on the map |
 
-### The one to be careful with
+### The one to be careful with — resolved: it could never have worked
 
-`antfarm_military create` is the highest-risk code in the project. This DFHack
-build has no `dfhack.military` module and no `assignNoblePosition`, so squad
-creation writes `df.squad`, `df.squad_position`, `df.squad_schedule_entry` and
-the uniform specs directly. It is a faithful port of df-ai's
-`military_find_free_squad`, which drove unattended 0.47 forts for years, but a
-port is not a test.
+`antfarm_military create` built `df.squad` by hand, ported from df-ai's
+`military_find_free_squad`. Tested 2026-10-31 on a **detached** squad that was
+never linked into the world: `squad.schedule` is a
+`vector<squad_schedule_entry[12]*>` (one contiguous twelve-month block per
+alert, which df-ai allocated with a raw `malloc`), and DFHack 0.47 Lua rejects
+every way of building one: `Cannot allocate arrays of non-primitive types`,
+and inserting a table of twelve entries is refused. Each attempt would have
+failed at the schedule step after consuming a squad id; the world-linking-last
+ordering meant it never corrupted anything.
 
-Two deliberate safety properties, which should not be "tidied away":
-
-* It is **not** called from `tick()`. Only `enlist` (into squads DF already
-  accepted) and schedule retuning run autonomously.
-* World-linking (`world.squads.all`, `ui.squads.list`, `entity.squads`) happens
-  **last**. Everything before it builds a detached object, so a raise anywhere —
-  the schedule construction is the least certain part, since DF stores twelve
-  entries per alert as one block — unwinds with nothing referenced by the world.
-  A partially-linked squad is corruption; a leaked unreferenced one is garbage.
+It now refuses up front and points at DF's military screen (`m`, then `c`).
+`enlist` writes the same three fields df-ai's `military_find_new_soldier` does
+and only touches squads DF itself created. Creating squads automatically would
+need a `start_driver()` UI driver for the military screen, like the petition
+driver.
 
 ---
 
@@ -194,18 +207,27 @@ Related and also missing: the **elven wood embargo enforcement**. Race detection
 exists and exports are pinned to stone, but nothing prevents a wooden bin being
 offered, which is what actually triggers the war (AGENTS.md 6.27).
 
-### 3.2. Strange moods
+### 3.2. Strange moods — first half implemented and verified live
 
-Gap #12. Nothing detects a moody dwarf, reads the claimed workshop's
-`job_items`, or supplies what is missing. The last mood on the live fort
-succeeded *by luck* — it wanted bauxite and the fort sits on 367 blocks of it.
-The failure case is permanent: the dwarf goes insane and is lost.
+`antfarm_mood.lua` (dispatched first in the server's subsystem list, every 60s)
+reads each mood job's `job_items` exactly as DFHack's `showmood` does. It reports
+needed / gathered / reachable / forbidden per requirement, unforbids just enough
+when only forbidden matches exist, warns once when nothing in the fort matches,
+and **places the workshop a mood needs when the fort has none of that kind**
+(never a magma forge). The dashboard shows a `STRANGE MOOD` line.
 
-The design is in [`AUTOMATION-GAPS.md`](AUTOMATION-GAPS.md) §12 and is tractable,
-because `job_items` states the demand exactly — item type, material, quantity
-wanted, quantity supplied. No guessing from announcement text. The escalation
-ladder (unforbid → prioritise → queue production → butcher for bone → last-resort
-`createitem`) is specified there.
+**Verified 2026-10-31 on the disposable `region_smoke` copy:** `strangemood
+-force -type fey` gave a jeweller mood in a fort with no Jeweler's workshop. The
+module placed one, it was built and claimed, and the dwarf made *Osdin Giken, a
+perfect brown zircon*. The live run also caught a bug the stub hid:
+`dfhack.job.isSuitableItem` does not check item type, so a rough-gem demand had
+matched 1086 stones; the module now checks type and subtype itself, and the stub
+behaves like the real function.
+
+Still open, from the escalation ladder in
+[`AUTOMATION-GAPS.md`](AUTOMATION-GAPS.md) §12: queueing production for a
+missing material, butchering for bone/shell, and the last-resort `createitem`,
+which needs an explicit operator opt-in because it is a cheat on stream.
 
 ### 3.3. Justice
 
@@ -309,11 +331,14 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
 
 ## 5. Suggested order
 
-1. **Unstick the live build** (step 11/22). Almost everything else is downstream:
-   no apartments, no jail, no grand dining hall, no guildhalls until it moves.
-2. **Strange moods** — cheapest high-stakes win; loses a dwarf permanently when
-   it fails.
-3. **Verify `antfarm_military create`** once by hand, then let enlistment run.
+1. **Keep the live build moving.** The current fort (`region1`, Erushavuz) went
+   from step 4 to step 7 on 2026-10-31 once brewing orders and both picks were
+   in use. Digging is now limited by having two picks: more need a smelter and
+   forge (Dreamfort `/industry2`, step 10) or the trade driver below.
+2. **Strange moods, second half** — production, butchering and an opt-in
+   `createitem` for demands nothing in the fort matches.
+3. **Military-screen driver** — the only way to create squads unattended in
+   0.47 (`antfarm_military create` was proven impossible from Lua).
 4. **Trade-screen driver** — the only path to iron on this map.
 5. **Locations**, then flip the petition handler from decline to accept.
 6. **Justice**, reusing the orders module's impossible-vs-not-yet logic.

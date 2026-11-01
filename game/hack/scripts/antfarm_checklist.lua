@@ -103,7 +103,7 @@ local CHECKS = {
  end},
 
 {group = 'survival', critical = true, name = 'booze production',
- fix = 'antfarm_sustenance workshops', check = function()
+ fix = 'antfarm_sustenance all', check = function()
     local still = count_buildings(df.building_type.Workshop, df.workshop_type.Still)
     local plants = count_items(df.item_type.PLANT)
     local brew = 0
@@ -213,7 +213,7 @@ local CHECKS = {
  end},
 
 {group = 'governance', critical = false, name = 'military exists',
- fix = 'HIGH RISK / MANUAL: antfarm_military create is unverified; test only on a disposable fort after reviewing docs/ROADMAP.md section 2. antfarm_military status is safe to inspect.', check = function()
+ fix = 'MANUAL: create a squad in the military screen (m, then c); antfarm_military enlist then fills it. Squads cannot be created from DFHack 0.47 Lua -- see docs/ROADMAP.md.', check = function()
     local r = rep('antfarm_military')
     if not r then return nil, 'military module unavailable' end
     return (r.squads or 0) > 0,

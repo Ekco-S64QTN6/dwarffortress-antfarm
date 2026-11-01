@@ -154,6 +154,14 @@ local ORDER_LIBS = {
     {after = 18, lib = 'library/rockstock', note = 'stock of rock furniture'},
 }
 
+-- A manager order that only this library creates, so an import that already
+-- happened can be recognised in the game itself. The plan's orders_done flag is
+-- not enough on its own: re-anchoring resets it while the fort keeps every
+-- order, and importing again duplicates all of them.
+local ORDER_LIB_SIGNATURE = {
+    ['library/basic'] = 'BREW_DRINK_FROM_PLANT',
+}
+
 -- ---------------------------------------------------------------- --
 -- plan persistence                                                 --
 -- ---------------------------------------------------------------- --
@@ -271,6 +279,49 @@ local function save_plan()
     -- Stamp every write, so a plan can always be matched back to its fort.
     if not antfarm_plan.fort then antfarm_plan.fort = fort_identity() end
     pcall(json.encode_file, antfarm_plan, PLAN_FILE)
+end
+
+-- ---------------------------------------------------------------- --
+-- orders libraries                                                 --
+-- ---------------------------------------------------------------- --
+
+local function library_in_game(lib)
+    local reaction = ORDER_LIB_SIGNATURE[lib]
+    if not reaction then return false end
+    local ok, found = pcall(function()
+        for _, o in ipairs(df.global.world.manager_orders) do
+            if o.reaction_name == reaction then return true end
+        end
+        return false
+    end)
+    return ok and found or false
+end
+
+-- Import an orders library into this fort at most once. Returns true when the
+-- library is (now) present, or false plus a reason.
+--
+-- Public because sustenance imports library/basic ahead of the build schedule:
+-- it carries the brewing orders, and a still nobody is told to use is how a
+-- fort with idle dwarves runs dry.
+--
+-- Completion is persisted only when DFHack accepts the command. A Lua pcall
+-- reports only thrown errors; run_command can return a failure code without
+-- throwing, and marking the library first would suppress every retry.
+function import_order_library(lib)
+    local plan = load_plan()
+    if plan.orders_done[lib] then return true end
+    if library_in_game(lib) then
+        plan.orders_done[lib] = true
+        save_plan()
+        return true
+    end
+    local ok, result = pcall(dfhack.run_command, 'orders import ' .. lib)
+    if ok and result == CR_OK then
+        plan.orders_done[lib] = true
+        save_plan()
+        return true
+    end
+    return false, ok and ('command returned ' .. tostring(result)) or tostring(result)
 end
 
 -- ---------------------------------------------------------------- --
@@ -830,18 +881,11 @@ function apply_step(index, force)
     save_plan()
 
     -- Import an orders library once the fort is far enough along to use it.
-    -- Only persist completion when DFHack accepts the command. A Lua pcall
-    -- only reports thrown errors; run_command can return a failure code without
-    -- throwing, and marking the library first would suppress every retry.
     for _, ol in ipairs(ORDER_LIBS) do
         if plan.step > ol.after and not plan.orders_done[ol.lib] then
             print('  > orders import ' .. ol.lib .. '  (' .. ol.note .. ')')
-            local ok, result = pcall(dfhack.run_command, 'orders import ' .. ol.lib)
-            if ok and result == CR_OK then
-                plan.orders_done[ol.lib] = true
-            else
-                local reason = ok and ('command returned ' .. tostring(result))
-                    or tostring(result)
+            local ok, reason = import_order_library(ol.lib)
+            if not ok then
                 dfhack.printerr(('antfarm_blueprint: orders import %s failed (%s); '
                     .. 'will retry after a later build step'):format(ol.lib, reason))
             end

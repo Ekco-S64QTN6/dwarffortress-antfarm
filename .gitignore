@@ -29,6 +29,8 @@ game/errorlog.txt
 game/region*-*
 game/*.bmp
 game/data/movies/
+# DFHack's console command history: one operator's session, rewritten on exit.
+game/dfhack-config/dfhack.history
 
 # --- Python ----------------------------------------------------------------
 __pycache__/

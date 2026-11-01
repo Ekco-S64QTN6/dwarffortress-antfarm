@@ -91,6 +91,7 @@ game/  (Dwarf Fortress + DFHack, Lua)          antfarm/  (Python)
                         outstanding orders, and only schedules bed construction
                         when a free finished BED item exists
   antfarm_military.lua squads/training
+  antfarm_mood.lua     strange moods: demands, unforbid, missing workshop
   antfarm_sustenance.lua food/drink/labour
   antfarm_checklist.lua fort viability
   antfarm_autostart.lua title -> playing
@@ -221,7 +222,10 @@ silently disagreed before (a stripped trailing space made every nickname *clear*
 
 ## Things that will bite
 
-- **DF vectors are 0-indexed.** `ipairs()` skips element 0. Use `for i = 0, #vec - 1`.
+- **DF vectors are 0-indexed.** In the live game DFHack's `ipairs()` does start at 0
+  (measured on 0.47.05-r8), but on `tests/df_stub.lua` vectors under the system Lua it
+  starts at 1 and silently skips element 0. Use `for i = 0, #vec - 1` so the tests and
+  the game see the same elements.
 - **`dfhack.timeout` has no real-time unit.** Only `frames`, `ticks`, `days`, `months`, `years`.
   Use **`frames`**, not `ticks`, for anything that must run while paused — the bridge, auto-unpause
   and the dashboard all must. Gate the actual work on `dfhack.getTickCount()` for a steady cadence.

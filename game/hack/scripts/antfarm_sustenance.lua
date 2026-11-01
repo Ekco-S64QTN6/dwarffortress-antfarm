@@ -30,7 +30,8 @@
 --   antfarm_sustenance gather     site (or re-site) the gathering zone
 --   antfarm_sustenance workshops  build still / kitchen / farmer's workshop
 --   antfarm_sustenance labour     cap tool labours, guarantee gatherers
---   antfarm_sustenance all        do all three
+--   antfarm_sustenance brew       import the brewing orders once a still is built
+--   antfarm_sustenance all        do all four
 
 --@module = true
 
@@ -42,7 +43,8 @@ local MIN_PLANTERS = 2
 local DRINK_PER_CITIZEN = 2
 
 -- Tool-limited labours: assigning more dwarves than there are tools just parks
--- them. The item subtype that each one needs.
+-- them, and assigning fewer leaves a tool on the floor. The item subtype that
+-- each one needs.
 local TOOL_LABOURS = {
     {labor = 'MINE',    tool = 'ITEM_WEAPON_PICK',       floor = 1},
     {labor = 'CUTWOOD', tool = 'ITEM_WEAPON_AXE_BATTLE', floor = 1},
@@ -200,15 +202,19 @@ local WANTED_SHOPS = {
 }
 
 -- A workshop's kind lives in `type` (df.workshop_type); `subtype` does not
--- exist on building_workshopst in this build and raises.
-local function have_shop(kind)
+-- exist on building_workshopst in this build and raises. Furnaces likewise.
+function have_building(btype, kind)
     for _, b in ipairs(df.global.world.buildings.all) do
-        if b:getType() == df.building_type.Workshop then
+        if b:getType() == btype then
             local ok, t = pcall(function() return b.type end)
             if ok and t == kind then return true end
         end
     end
     return false
+end
+
+local function have_shop(kind)
+    return have_building(df.building_type.Workshop, kind)
 end
 
 local function clear_3x3(x0, y0, z)
@@ -227,40 +233,85 @@ local function clear_3x3(x0, y0, z)
     return true
 end
 
-function ensure_workshops()
+-- Place one 3x3 building (workshop or furnace) on the nearest clear surface
+-- ground around the fort's anchor, spiralling outwards. Public: antfarm_mood
+-- uses it when a moody dwarf needs a workshop the fort has not got.
+function place_building(btype, kind)
     local ax, ay, z = anchor()
-    if not ax then return {}, 'no anchor and no citizens' end
-    local placed = {}
-    for _, want in ipairs(WANTED_SHOPS) do
-        if not have_shop(want.subtype) then
-            local done = false
-            for r = 2, 18 do
-                for dx = -r, r do
-                    for dy = -r, r do
-                        if not done and math.max(math.abs(dx), math.abs(dy)) == r then
-                            local x0, y0 = ax + dx, ay + dy
-                            if clear_3x3(x0, y0, z) then
-                                local ok, b = pcall(dfhack.buildings.constructBuilding, {
-                                    type = df.building_type.Workshop,
-                                    subtype = want.subtype,
-                                    pos = xyz2pos(x0 + 1, y0 + 1, z),
-                                })
-                                if ok and b then
-                                    table.insert(placed, want.name)
-                                    done = true
-                                end
-                            end
+    if not ax then return false, 'no anchor and no citizens' end
+    for r = 2, 18 do
+        for dx = -r, r do
+            for dy = -r, r do
+                if math.max(math.abs(dx), math.abs(dy)) == r then
+                    local x0, y0 = ax + dx, ay + dy
+                    if clear_3x3(x0, y0, z) then
+                        local ok, b = pcall(dfhack.buildings.constructBuilding, {
+                            type = btype,
+                            subtype = kind,
+                            pos = xyz2pos(x0 + 1, y0 + 1, z),
+                        })
+                        if ok and b then
+                            pcall(dfhack.run_command, 'prioritize', '-a', 'ConstructBuilding')
+                            return true
                         end
                     end
                 end
-                if done then break end
             end
         end
     end
-    if #placed > 0 then
-        pcall(dfhack.run_command, 'prioritize', '-a', 'ConstructBuilding')
+    return false, 'no clear 3x3 ground within 18 tiles of the anchor'
+end
+
+function ensure_workshops()
+    local ax = anchor()
+    if not ax then return {}, 'no anchor and no citizens' end
+    local placed = {}
+    for _, want in ipairs(WANTED_SHOPS) do
+        if not have_shop(want.subtype)
+                and place_building(df.building_type.Workshop, want.subtype) then
+            table.insert(placed, want.name)
+        end
     end
     return placed
+end
+
+-- ---------------------------------------------------------------- --
+-- brewing orders                                                   --
+-- ---------------------------------------------------------------- --
+
+-- A still is only half the job; nobody brews without a manager order. The
+-- brewing orders ship in Dreamfort's library/basic, which the build schedule
+-- imports after step 5 -- and step 5 waits on surface digging. A live fort sat
+-- at step 4 with a finished still, a gathering zone and four idle dwarves, and
+-- not one brew order. So import that library as soon as a still is finished,
+-- through the blueprint, which records it so step 5 does not import it again.
+local BREW_LIBRARY = 'library/basic'
+
+local function still_finished()
+    for _, b in ipairs(df.global.world.buildings.all) do
+        if b:getType() == df.building_type.Workshop then
+            local ok, done = pcall(function()
+                return b.type == df.workshop_type.Still
+                    and b:getBuildStage() >= b:getMaxBuildStage()
+            end)
+            if ok and done then return true end
+        end
+    end
+    return false
+end
+
+-- Returns true when the brewing orders are (now) in place, false plus a reason
+-- otherwise. Waiting for a still is not a failure, so it returns nil.
+function ensure_brew_orders()
+    if not still_finished() then return nil, 'no finished still yet' end
+    local ok, bp = pcall(reqscript, 'antfarm_blueprint')
+    if not ok or not bp or not bp.import_order_library then
+        return false, 'antfarm_blueprint unavailable: ' .. tostring(bp)
+    end
+    local okc, done, reason = pcall(bp.import_order_library, BREW_LIBRARY)
+    if not okc then return false, tostring(done) end
+    if not done then return false, reason end
+    return true
 end
 
 -- ---------------------------------------------------------------- --
@@ -270,6 +321,12 @@ end
 -- autolabor assigned four dwarves to MINE on an embark carrying two picks; the
 -- surplus two stood still for an in-game season. Cap each tool labour at the
 -- number of tools that exist, and let the freed dwarves do anything else.
+--
+-- The MINIMUM must be the tool count too, not 1. Past its minimum, autolabor
+-- only adds a dwarf who is already skilled or when two or more stand idle
+-- (plugins/autolabor/autolabor.cpp, 0.47.05-r8). A minimum of 1 -- below
+-- DFHack's own MINE default of 2 -- left a live fort with 110 dig jobs, one
+-- miner and its second pick lying on the floor.
 -- A successful pcall only means the Lua call did not throw. DFHack commands
 -- can still reject a request with a non-CR_OK return code; don't report the
 -- labor target as configured unless the command itself was accepted.
@@ -292,7 +349,7 @@ function tune_labour()
     for _, t in ipairs(TOOL_LABOURS) do
         local n = count_tool(t.tool)
         local cap = math.max(t.floor, n)
-        local ok, reason = set_autolabor(t.labor, math.min(t.floor, cap), cap)
+        local ok, reason = set_autolabor(t.labor, cap, cap)
         if ok then
             table.insert(notes, ('%s capped at %d (%d tool%s on hand)')
                 :format(t.labor, cap, n, n == 1 and '' or 's'))
@@ -336,8 +393,26 @@ function tick()
     if now - antfarm_sustenance_state.last_run < RUN_INTERVAL_SEC then return end
     antfarm_sustenance_state.last_run = now
 
-    local placed = select(1, pcall(ensure_workshops)) and ensure_workshops() or {}
-    for _, p in ipairs(placed) do note('placed a ' .. p) end
+    -- One protected call. This used to run ensure_workshops() twice -- once to
+    -- place, once to report -- so the second call saw nothing missing and no
+    -- placement was ever noted.
+    local ok_shops, placed = pcall(ensure_workshops)
+    if not ok_shops then
+        note('workshop placement failed: ' .. tostring(placed))
+    else
+        for _, p in ipairs(placed) do note('placed a ' .. p) end
+    end
+
+    local had_brew = antfarm_sustenance_state.brew_ok
+    local ok_brew, brewing, why = pcall(ensure_brew_orders)
+    if not ok_brew then
+        note('brew orders failed: ' .. tostring(brewing))
+    elseif brewing == false then
+        note('brew orders not imported: ' .. tostring(why))
+    elseif brewing and not had_brew then
+        note('brewing orders in place (' .. BREW_LIBRARY .. ')')
+    end
+    antfarm_sustenance_state.brew_ok = ok_brew and brewing == true
 
     local ok, msg = pcall(ensure_gather_zone, false)
     if ok and msg == true then note('sited a gathering zone') end
@@ -377,6 +452,7 @@ function report()
         workshops = shops,
         gather_zone = zone ~= nil,
         gather_shrubs = shrubs,
+        brew_orders = antfarm_sustenance_state.brew_ok == true,
         notes = antfarm_sustenance_state.notes,
     }
 end
@@ -395,6 +471,10 @@ elseif verb == 'workshops' then
     local placed = ensure_workshops()
     if #placed == 0 then print('antfarm_sustenance: still, kitchen and farmer\'s workshop all present')
     else print('antfarm_sustenance: placed ' .. table.concat(placed, ', ')) end
+elseif verb == 'brew' then
+    local ok, why = ensure_brew_orders()
+    if ok then print('antfarm_sustenance: brewing orders in place (' .. BREW_LIBRARY .. ')')
+    else print('antfarm_sustenance: brewing orders not imported -- ' .. tostring(why)) end
 elseif verb == 'labour' or verb == 'labor' then
     for _, n in ipairs(tune_labour()) do print('antfarm_sustenance: ' .. n) end
 elseif verb == 'all' then
@@ -402,6 +482,9 @@ elseif verb == 'all' then
     if #placed > 0 then print('antfarm_sustenance: placed ' .. table.concat(placed, ', ')) end
     local _, msg = ensure_gather_zone(false)
     print('antfarm_sustenance: ' .. tostring(msg))
+    local brewing, why = ensure_brew_orders()
+    print('antfarm_sustenance: brewing orders ' ..
+        (brewing and 'in place' or ('not imported -- ' .. tostring(why))))
     for _, n in ipairs(tune_labour()) do print('antfarm_sustenance: ' .. n) end
 else
     local r = report()
