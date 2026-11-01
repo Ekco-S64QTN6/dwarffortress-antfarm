@@ -118,6 +118,9 @@ do
         if labor == 'HERBALIST' then return 9 end
         return 0
     end)
+    -- The production tick interval is five minutes; move the fake game clock
+    -- past its first eligible run before asserting the background behavior.
+    w.advance(300000)
     env.tick()
     local notes = table.concat(env.antfarm_sustenance_state.notes, ' | ')
     check('background tick publishes rejected labor settings',
