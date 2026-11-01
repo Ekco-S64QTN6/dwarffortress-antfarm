@@ -270,24 +270,48 @@ end
 -- autolabor assigned four dwarves to MINE on an embark carrying two picks; the
 -- surplus two stood still for an in-game season. Cap each tool labour at the
 -- number of tools that exist, and let the freed dwarves do anything else.
+-- A successful pcall only means the Lua call did not throw. DFHack commands
+-- can still reject a request with a non-CR_OK return code; don't report the
+-- labor target as configured unless the command itself was accepted.
+local function set_autolabor(labor, minimum, maximum)
+    local ok, result
+    if maximum ~= nil then
+        ok, result = pcall(dfhack.run_command, 'autolabor', labor,
+                           tostring(minimum), tostring(maximum))
+    else
+        ok, result = pcall(dfhack.run_command, 'autolabor', labor,
+                           tostring(minimum))
+    end
+    if ok and result == CR_OK then return true end
+    if ok then return false, 'command returned ' .. tostring(result) end
+    return false, tostring(result)
+end
+
 function tune_labour()
     local notes = {}
     for _, t in ipairs(TOOL_LABOURS) do
         local n = count_tool(t.tool)
         local cap = math.max(t.floor, n)
-        local ok = pcall(dfhack.run_command, 'autolabor', t.labor,
-                         tostring(math.min(t.floor, cap)), tostring(cap))
+        local ok, reason = set_autolabor(t.labor, math.min(t.floor, cap), cap)
         if ok then
             table.insert(notes, ('%s capped at %d (%d tool%s on hand)')
                 :format(t.labor, cap, n, n == 1 and '' or 's'))
+        else
+            table.insert(notes, ('%s autolabor failed: %s'):format(t.labor, reason))
         end
     end
     -- Gathering and planting are how a young fort eats; guarantee staff for both.
-    if pcall(dfhack.run_command, 'autolabor', 'HERBALIST', tostring(MIN_HERBALISTS)) then
+    local herbalist_ok, herbalist_error = set_autolabor('HERBALIST', MIN_HERBALISTS)
+    if herbalist_ok then
         table.insert(notes, ('HERBALIST minimum %d'):format(MIN_HERBALISTS))
+    else
+        table.insert(notes, 'HERBALIST autolabor failed: ' .. herbalist_error)
     end
-    if pcall(dfhack.run_command, 'autolabor', 'PLANT', tostring(MIN_PLANTERS)) then
+    local plant_ok, plant_error = set_autolabor('PLANT', MIN_PLANTERS)
+    if plant_ok then
         table.insert(notes, ('PLANT minimum %d'):format(MIN_PLANTERS))
+    else
+        table.insert(notes, 'PLANT autolabor failed: ' .. plant_error)
     end
     return notes
 end
@@ -318,7 +342,16 @@ function tick()
     local ok, msg = pcall(ensure_gather_zone, false)
     if ok and msg == true then note('sited a gathering zone') end
 
-    pcall(tune_labour)
+    local ok_labour, labour_notes = pcall(tune_labour)
+    if not ok_labour then
+        note('labour tuning failed: ' .. tostring(labour_notes))
+    elseif type(labour_notes) == 'table' then
+        -- Successful tuning is routine; only retain failures in the dashboard
+        -- notes so repeated five-minute passes don't crowd out useful events.
+        for _, message in ipairs(labour_notes) do
+            if message:find('autolabor failed:', 1, true) then note(message) end
+        end
+    end
 end
 
 function report()
