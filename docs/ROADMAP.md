@@ -118,7 +118,7 @@ finding-by-finding review of the earlier report.
 | **Brewing job priorities** | PR #20 replaces the nonexistent `Brew` job token with DFHack 0.47 `CustomReaction --reaction-name` filters for both plant-brewing reactions; a config regression test and CI pass guard it |
 | **Dreamfort order-library retry** | PR #21 records an import as complete only after DFHack returns `CR_OK`; rejected imports remain pending and are retried after a later completed build step |
 | **Autolabor command observability** | PR #22 checks `CR_OK` for MINE/CUTWOOD/HERBALIST/PLANT and publishes rejected command settings rather than claiming success; Lua tests cover return-code and thrown-error paths |
-| **Post-job assignment gap** | PR #23 proposes DFHack `workNow 2` to poke assignment when a dwarf finishes a job; it does not create jobs or bypass labor eligibility. Corrected-head CI is pending; do not treat as merged |
+| **Post-job assignment gap** | PR #23 merged with passing CI; DFHack `workNow 2` pokes assignment when a dwarf finishes a job. It reduces post-job idle delay but does not create jobs or bypass labor eligibility |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
