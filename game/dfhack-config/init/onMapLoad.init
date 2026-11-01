@@ -70,7 +70,7 @@ prioritize -aq defaults
 # In DF 0.47, brewing from plants is a CustomReaction, not a standalone Brew
 # job type. Use the reaction registry names and keep other custom reactions at
 # normal priority.
-prioritize -a CustomReaction -n BREW_DRINK_FROM_PLANT,BREW_DRINK_FROM_PLANT_GROWTH
+prioritize -a --reaction-name=BREW_DRINK_FROM_PLANT,BREW_DRINK_FROM_PLANT_GROWTH CustomReaction
 prioritize -a PlantSeeds ProcessPlants ProcessPlantsBarrel MillPlants PrepareMeal
 
 #######################################################
