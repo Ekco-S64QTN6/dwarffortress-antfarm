@@ -66,8 +66,12 @@ prioritize -aq defaults
 # starves: dwarves with no alcohol slow down and get miserable. `defaults` above
 # does not cover brewing or farm work, so add them explicitly -- these jump the
 # queue ahead of the thousands of mining jobs the guided build designates.
-# ('Brew' is the job type in 0.47; there is no 'BrewDrink'.)
-prioritize -a Brew PlantSeeds ProcessPlants ProcessPlantsBarrel MillPlants PrepareMeal
+#
+# In DF 0.47, brewing from plants is a CustomReaction, not a standalone Brew
+# job type. Use the reaction registry names and keep other custom reactions at
+# normal priority.
+prioritize -a --reaction-name=BREW_DRINK_FROM_PLANT,BREW_DRINK_FROM_PLANT_GROWTH CustomReaction
+prioritize -a PlantSeeds ProcessPlants ProcessPlantsBarrel MillPlants PrepareMeal
 
 #######################################################
 # Food, farming and livestock
