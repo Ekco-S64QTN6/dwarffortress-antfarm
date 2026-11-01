@@ -207,7 +207,7 @@ Related and also missing: the **elven wood embargo enforcement**. Race detection
 exists and exports are pinned to stone, but nothing prevents a wooden bin being
 offered, which is what actually triggers the war (AGENTS.md 6.27).
 
-### 3.2. Strange moods — first half implemented and verified live
+### 3.2. Strange moods — implemented and verified live
 
 `antfarm_mood.lua` (dispatched first in the server's subsystem list, every 60s)
 reads each mood job's `job_items` exactly as DFHack's `showmood` does. It reports
@@ -224,10 +224,19 @@ perfect brown zircon*. The live run also caught a bug the stub hid:
 matched 1086 stones; the module now checks type and subtype itself, and the stub
 behaves like the real function.
 
-Still open, from the escalation ladder in
-[`AUTOMATION-GAPS.md`](AUTOMATION-GAPS.md) §12: queueing production for a
-missing material, butchering for bone/shell, and the last-resort `createitem`,
-which needs an explicit operator opt-in because it is a cheat on stream.
+**Second half implemented and verified live 2026-11-01** (same disposable copy).
+When nothing in the fort matches a requirement, `antfarm_mood` escalates:
+
+| Demand | Route | Live evidence |
+| :-- | :-- | :-- |
+| bone, shell, horn/hoof, ivory/tooth, pearl | ensure a butcher's workshop; use an animal already marked for slaughter, else mark one that yields the material -- never a pet, a war/hunting animal, or the last of its sex | (first bone mood resolved itself from a slaughtered yak before the route ran; the leather run below exercises the same marking path) |
+| tanned leather | as above for SKIN, plus a tanner's workshop and a `CustomReaction` `TAN_A_HIDE` order (no `TanAHide` job exists in 0.47) | leatherworker mood: butcher's + tanner's placed, a spare dog marked, order validated and run, **2/2 leather gathered** |
+| stone blocks, cut gems | `ConstructBlocks` / `CutGems` manager order with `__reduce_amount`, workshop placed if missing; gems name a material the fort holds as rough | offline only |
+| anything else (e.g. *any bar* on a metal-less map) | **opt-in only** (`antfarm_mood createitem on`) and only under `createitem_below_ticks` of mood time left: `dfhack.items.createItem` at the dwarf's feet, cheapest acceptable material, in-game announcement | bar created, gathered at once, **artifact made** ("Teskomvumshar Sanad"); the run created iron, which led to the cheapest-material rule (copper) |
+
+`report()` adds `days_left` and each requirement's `route`. Still open:
+smelting for bar demands when ore and fuel exist (today only the opt-in conjure
+serves them), cloth/thread, and logs.
 
 ### 3.3. Justice
 
@@ -335,8 +344,8 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
    from step 4 to step 7 on 2026-10-31 once brewing orders and both picks were
    in use. Digging is now limited by having two picks: more need a smelter and
    forge (Dreamfort `/industry2`, step 10) or the trade driver below.
-2. **Strange moods, second half** — production, butchering and an opt-in
-   `createitem` for demands nothing in the fort matches.
+2. ~~**Strange moods, second half**~~ — done 2026-11-01 (§3.2). Left: smelting
+   for bar demands, cloth, logs.
 3. **Military-screen driver** — the only way to create squads unattended in
    0.47 (`antfarm_military create` was proven impossible from Lua).
 4. **Trade-screen driver** — the only path to iron on this map.

@@ -190,6 +190,14 @@ def format_manager_order_status(orders):
     return f"[bold #FFC857]MANAGER ORDERS:[/] {details}"
 
 
+# What antfarm_mood is doing about a requirement nothing in the fort matches.
+ROUTE_LABELS = {
+    "butcher": "butchering for it",
+    "order": "production ordered",
+    "conjured": "conjured (operator opt-in)",
+}
+
+
 def format_mood_status(mood):
     """One line per strange mood: who, what kind, and what is still missing.
 
@@ -218,12 +226,19 @@ def format_mood_status(mood):
                 continue
             item = f"{text(q.get('what'), 'item')} {got}/{need}"
             if number(q.get("free")) + number(q.get("forbidden")) == 0:
-                item += " [#FF4040](none in fort)[/]"
+                route = ROUTE_LABELS.get(q.get("route"))
+                item += (f" [#FFC857]({route})[/]" if route
+                         else " [#FF4040](none in fort)[/]")
             missing.append(item)
         wants = ", ".join(missing) if missing else "has everything"
+        days = m.get("days_left")
+        countdown = ""
+        if type(days) is int and days >= 0 and missing:
+            colour = "#FF4040" if days <= 10 else "#A0A0B0"
+            countdown = f" [{colour}]· {days} days left[/]"
         lines.append(
             f"[bold #C77DFF]STRANGE MOOD:[/] {text(m.get('name'))} "
-            f"({text(m.get('mood'))}) - {wants}"
+            f"({text(m.get('mood'))}) - {wants}{countdown}"
         )
     for w in mood.get("waiting") or []:
         if isinstance(w, dict):
