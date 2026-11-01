@@ -19,7 +19,7 @@ local function check(name, ok)
 end
 
 local count = 0
-for line in content:gmatch('[^\\n]+') do
+for line in content:gmatch('[^\n]+') do
     if line:match('^%s*workNow%s+2%s*$') then count = count + 1 end
 end
 
