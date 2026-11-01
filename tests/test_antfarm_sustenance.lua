@@ -64,9 +64,12 @@ do
 
     check('submits mining, woodcutting, herbalist and planting targets', #calls == 4,
           tostring(#calls))
-    check('mining maximum is capped to the two picks',
-          by_labor.MINE and by_labor.MINE.minimum == '1'
-          and by_labor.MINE.maximum == '2')
+    -- The minimum must match the picks too: autolabor will not add a second,
+    -- unskilled miner on its own, and the spare pick lies on the floor.
+    check('mining minimum and maximum both equal the two picks',
+          by_labor.MINE and by_labor.MINE.minimum == '2'
+          and by_labor.MINE.maximum == '2',
+          by_labor.MINE and (by_labor.MINE.minimum .. '/' .. by_labor.MINE.maximum))
     check('woodcutting maximum is capped to the one axe',
           by_labor.CUTWOOD and by_labor.CUTWOOD.minimum == '1'
           and by_labor.CUTWOOD.maximum == '1')

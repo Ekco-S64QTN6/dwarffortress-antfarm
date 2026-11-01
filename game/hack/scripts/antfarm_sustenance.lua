@@ -43,7 +43,8 @@ local MIN_PLANTERS = 2
 local DRINK_PER_CITIZEN = 2
 
 -- Tool-limited labours: assigning more dwarves than there are tools just parks
--- them. The item subtype that each one needs.
+-- them, and assigning fewer leaves a tool on the floor. The item subtype that
+-- each one needs.
 local TOOL_LABOURS = {
     {labor = 'MINE',    tool = 'ITEM_WEAPON_PICK',       floor = 1},
     {labor = 'CUTWOOD', tool = 'ITEM_WEAPON_AXE_BATTLE', floor = 1},
@@ -310,6 +311,12 @@ end
 -- autolabor assigned four dwarves to MINE on an embark carrying two picks; the
 -- surplus two stood still for an in-game season. Cap each tool labour at the
 -- number of tools that exist, and let the freed dwarves do anything else.
+--
+-- The MINIMUM must be the tool count too, not 1. Past its minimum, autolabor
+-- only adds a dwarf who is already skilled or when two or more stand idle
+-- (plugins/autolabor/autolabor.cpp, 0.47.05-r8). A minimum of 1 -- below
+-- DFHack's own MINE default of 2 -- left a live fort with 110 dig jobs, one
+-- miner and its second pick lying on the floor.
 -- A successful pcall only means the Lua call did not throw. DFHack commands
 -- can still reject a request with a non-CR_OK return code; don't report the
 -- labor target as configured unless the command itself was accepted.
@@ -332,7 +339,7 @@ function tune_labour()
     for _, t in ipairs(TOOL_LABOURS) do
         local n = count_tool(t.tool)
         local cap = math.max(t.floor, n)
-        local ok, reason = set_autolabor(t.labor, math.min(t.floor, cap), cap)
+        local ok, reason = set_autolabor(t.labor, cap, cap)
         if ok then
             table.insert(notes, ('%s capped at %d (%d tool%s on hand)')
                 :format(t.labor, cap, n, n == 1 and '' or 's'))
