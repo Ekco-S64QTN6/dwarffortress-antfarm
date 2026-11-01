@@ -1,6 +1,6 @@
 # Remaining work
 
-Updated 2026-10-31 after the repository review and reliability work. See
+Updated 2026-11-01 after the live-smoke capture and workforce/order reliability fixes. See
 [`FORT-CHECKLIST.md`](FORT-CHECKLIST.md) for what a fort needs and how to check it
 with one command, and [`REVIEW-2026-10-31.md`](REVIEW-2026-10-31.md) for the
 finding-by-finding review of the earlier report.
@@ -114,7 +114,11 @@ finding-by-finding review of the earlier report.
 | **High-risk checklist guidance** | The governance checklist no longer presents direct-memory squad creation as a routine fix; the operator is directed to a disposable fort and the roadmap's explicit risk note |
 | **Manager-order diagnosis** | `antfarm_orders audit` reports tri-state validation/activity flags, stalled jobs/unmet inputs, and manager office readiness (including the 20-citizen threshold); stub tests prove it does not write protected flags |
 | **Quarters furniture safety** | Furniture workorders omit the invalid material token, use the vendored `__reduce_amount` matcher to subtract equivalent open orders' `amount_left`, require `CR_OK` before reporting submission, and bed construction requires a free finished BED item; offline regressions guard these contracts |
-| **Disposable live-smoke runner** | PR #16 merged; 11 fake-runner safety tests and full offline CI passed. Requires a marked `world.sav`, two operator confirmations, and exact `dfhack.getSavePath()` match; no live run is claimed |
+| **Disposable live-smoke runner** | PR #16 merged; 11 fake-runner safety tests and full offline CI passed. PR #19 records a successful read-only run on a separately copied `region_smoke` save (DF 0.47.05 / DFHack 0.47.05-r8): 7 citizens, 4 validated orders, 0 stalled jobs, 0 unmet requirements. This verifies report paths and exact save identity only, not production completion or survival |
+| **Brewing job priorities** | PR #20 replaces the nonexistent `Brew` job token with DFHack 0.47 `CustomReaction --reaction-name` filters for both plant-brewing reactions; a config regression test and CI pass guard it |
+| **Dreamfort order-library retry** | PR #21 records an import as complete only after DFHack returns `CR_OK`; rejected imports remain pending and are retried after a later completed build step |
+| **Autolabor command observability** | PR #22 checks `CR_OK` for MINE/CUTWOOD/HERBALIST/PLANT and publishes rejected command settings rather than claiming success; Lua tests cover return-code and thrown-error paths |
+| **Post-job assignment gap** | PR #23 proposes DFHack `workNow 2` to poke assignment when a dwarf finishes a job; it does not create jobs or bypass labor eligibility. Corrected-head CI is pending; do not treat as merged |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
 path and the other items in §2 remain subject to their stated live-game checks.
