@@ -55,6 +55,12 @@ disable confirm
 # bundled Dwarf Therapist instead.
 enable autolabor
 
+# After a dwarf finishes a job, immediately poke the game to assign their next
+# eligible task instead of waiting through the normal idle/wander delay.
+# This reduces idle gaps; it does not create jobs or override military/burrow
+# exclusions handled by the labor manager.
+workNow 2
+
 # `labormanager` is the alternative; do not enable both.
 #enable labormanager
 
