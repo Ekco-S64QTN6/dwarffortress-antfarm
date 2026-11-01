@@ -133,6 +133,25 @@ class StrangeMoodDashboard(unittest.TestCase):
         self.assertIn("iron bar 0/150", line)
         self.assertIn("none in fort", line)
 
+    def test_shows_the_route_and_the_countdown(self):
+        line = format_mood_status({"moods": [{
+            "name": "Lor", "mood": "Fey", "days_left": 8,
+            "requirements": [
+                {"what": "leather", "need": 2, "got": 0, "free": 0, "forbidden": 0,
+                 "route": "butcher"},
+                {"what": "any bar", "need": 150, "got": 0, "free": 0, "forbidden": 0},
+            ]}]})
+        self.assertIn("leather 0/2 [#FFC857](butchering for it)", line)
+        self.assertIn("any bar 0/150 [#FF4040](none in fort)", line)
+        self.assertIn("[#FF4040]· 8 days left", line)
+
+    def test_no_countdown_once_everything_is_gathered(self):
+        line = format_mood_status({"moods": [{
+            "name": "Lor", "mood": "Fey", "days_left": 30,
+            "requirements": [{"what": "leather", "need": 2, "got": 2, "free": 0, "forbidden": 0}]}]})
+        self.assertIn("has everything", line)
+        self.assertNotIn("days left", line)
+
     def test_waiting_and_failed_moods(self):
         line = format_mood_status({"moods": [],
                                    "waiting": [{"name": "Ast", "mood": "Fey"}],

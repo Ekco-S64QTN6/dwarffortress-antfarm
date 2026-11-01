@@ -299,6 +299,25 @@ Future agents working on this codebase MUST review these documented pitfalls bef
     no office defined. Diagnose before writing to DF's internals, and prefer
     doing nothing to doing something irreversible.
 
+13. **There is no `TanAHide` job type in 0.47.** `df.job_type.TanAHide` is `nil`:
+    tanning is the raw-defined reaction `TAN_A_HIDE`, so a manager order is
+    `{"job":"CustomReaction","reaction":"TAN_A_HIDE"}` -- the same shape as the
+    brewing orders (PR #20). Verified live 2026-11-01: DF validated and ran it.
+14. **`unit.job.mood_timeout` counts down one per game tick from ~50,000**
+    (about 41 in-game days at 1,200 ticks a day), and **resets when the dwarf
+    claims a workshop**. Measured on `region_smoke`: 48638 -> 46936 -> 45234
+    across 1,702-tick samples, then ~49,800 right after the claim.
+15. **`world.units.active` still holds dead units.** Two slaughtered yaks and a
+    cat sat there with `dfhack.units.isActive(u) == false`. Filter on
+    `isActive` before treating a unit as present -- or you mark a corpse for
+    slaughter.
+16. **`strangemood -skill` takes the plugin's own lowercase names** (`bonecarver`,
+    `leatherworker`, `gemcutter`, `stonecrafter`...), not `df.job_skill` tokens:
+    `BONECARVE` and `bonecarve` are both "not recognized". The random target
+    must also be idle ("has active job, cannot start mood"); retry until one is.
+17. **Raw material value is `raws.inorganics[i].material.material_value`**
+    (copper 2, tin 2, iron 10, gold 30, adamantine 300).
+
 ### 6.2. Critical Game Stability Fixes & Settings
 
 > **Verify before you trust this list.** As of 2026-09-12 several of these were
@@ -738,6 +757,7 @@ Trade caravans require a 3-tile wide path free of trees, boulders, walls, and tr
 ### 6.16. Strange Mood Material Exhaustion & Workshop Lockdown (`showmood`)
 When a dwarf enters a strange mood (Fey, Secretive, Possessed, Macabre, Fell), they claim a workshop and demand materials:
 * **The Impossible Demands:** Dwarves may demand green glass (on embarks without sand), shells (on embarks without turtles or cave lobsters), or silk. If the item cannot be acquired within a few months, the dwarf goes melancholy, insane, or berserk.
+* **Automated:** `antfarm_mood.lua` does this unattended -- see `docs/ROADMAP.md` §3.2 for the routes (unforbid, workshop, butcher, produce, opt-in conjure) and what was verified live.
 * **Diagnostic & Containment:** Run `showmood` (compiled DFHack plugin `game/hack/plugins/showmood.plug.so`) to view the exact requested items. If an item cannot be obtained, construct a temporary wall or lock the workshop door before the deadline to isolate a potentially berserk artisan from the rest of the fort.
 
 ### 6.17. Freezing Surface Water, Deep Cisterns & Hydrostatic Depressurization

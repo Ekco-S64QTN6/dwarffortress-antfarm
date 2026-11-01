@@ -91,7 +91,9 @@ game/  (Dwarf Fortress + DFHack, Lua)          antfarm/  (Python)
                         outstanding orders, and only schedules bed construction
                         when a free finished BED item exists
   antfarm_military.lua squads/training
-  antfarm_mood.lua     strange moods: demands, unforbid, missing workshop
+  antfarm_mood.lua     strange moods: demands, unforbid, missing workshop,
+                        butcher for parts/leather, production orders,
+                        opt-in last-resort createitem
   antfarm_sustenance.lua food/drink/labour
   antfarm_checklist.lua fort viability
   antfarm_autostart.lua title -> playing
@@ -262,6 +264,14 @@ silently disagreed before (a stripped trailing space made every nickname *clear*
   and triggers trade abandonment and war (AGENTS.md 6.27).
 - **Magma buildings require melting point ≥ 12,000 °U.** Non-magma-safe stone melts instantly upon contact
   with magma, destroying the workshop and flooding the room (AGENTS.md 6.29).
+
+- **Conjuring is the operator's call, never the code's.** `antfarm_mood` creates items only when
+  `dfhack-config/antfarm_mood.json` has `createitem_last_resort: true` (`antfarm_mood createitem on`)
+  *and* the mood has under `createitem_below_ticks` (default 12000, ~10 days) left. Default off: it is
+  a cheat on stream. When it fires it picks the cheapest acceptable material and announces in game.
+  Body parts are never conjured; butchering covers them.
+- **Never butcher a pet, a trained war/hunting animal, or the last of a sex.** `pick_for_slaughter`
+  prefers an animal autobutcher already marked; the live fix was a butcher's workshop, not a mark.
 
 - **Never write `manager_order.status` bits.** Forcing `validated`/`active` to make work
   orders issue segfaulted DF silently — no error, no core, nothing in the log (AGENTS.md 6.1.12).
