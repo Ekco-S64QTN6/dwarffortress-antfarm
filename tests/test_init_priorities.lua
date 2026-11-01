@@ -19,7 +19,7 @@ local function check(name, ok)
 end
 
 local expected_brew =
-    'prioritize -a CustomReaction -n BREW_DRINK_FROM_PLANT,BREW_DRINK_FROM_PLANT_GROWTH'
+    'prioritize -a --reaction-name=BREW_DRINK_FROM_PLANT,BREW_DRINK_FROM_PLANT_GROWTH CustomReaction'
 local expected_food =
     'prioritize -a PlantSeeds ProcessPlants ProcessPlantsBarrel MillPlants PrepareMeal'
 
