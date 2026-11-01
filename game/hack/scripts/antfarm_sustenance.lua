@@ -202,15 +202,19 @@ local WANTED_SHOPS = {
 }
 
 -- A workshop's kind lives in `type` (df.workshop_type); `subtype` does not
--- exist on building_workshopst in this build and raises.
-local function have_shop(kind)
+-- exist on building_workshopst in this build and raises. Furnaces likewise.
+function have_building(btype, kind)
     for _, b in ipairs(df.global.world.buildings.all) do
-        if b:getType() == df.building_type.Workshop then
+        if b:getType() == btype then
             local ok, t = pcall(function() return b.type end)
             if ok and t == kind then return true end
         end
     end
     return false
+end
+
+local function have_shop(kind)
+    return have_building(df.building_type.Workshop, kind)
 end
 
 local function clear_3x3(x0, y0, z)
@@ -229,38 +233,44 @@ local function clear_3x3(x0, y0, z)
     return true
 end
 
-function ensure_workshops()
+-- Place one 3x3 building (workshop or furnace) on the nearest clear surface
+-- ground around the fort's anchor, spiralling outwards. Public: antfarm_mood
+-- uses it when a moody dwarf needs a workshop the fort has not got.
+function place_building(btype, kind)
     local ax, ay, z = anchor()
-    if not ax then return {}, 'no anchor and no citizens' end
-    local placed = {}
-    for _, want in ipairs(WANTED_SHOPS) do
-        if not have_shop(want.subtype) then
-            local done = false
-            for r = 2, 18 do
-                for dx = -r, r do
-                    for dy = -r, r do
-                        if not done and math.max(math.abs(dx), math.abs(dy)) == r then
-                            local x0, y0 = ax + dx, ay + dy
-                            if clear_3x3(x0, y0, z) then
-                                local ok, b = pcall(dfhack.buildings.constructBuilding, {
-                                    type = df.building_type.Workshop,
-                                    subtype = want.subtype,
-                                    pos = xyz2pos(x0 + 1, y0 + 1, z),
-                                })
-                                if ok and b then
-                                    table.insert(placed, want.name)
-                                    done = true
-                                end
-                            end
+    if not ax then return false, 'no anchor and no citizens' end
+    for r = 2, 18 do
+        for dx = -r, r do
+            for dy = -r, r do
+                if math.max(math.abs(dx), math.abs(dy)) == r then
+                    local x0, y0 = ax + dx, ay + dy
+                    if clear_3x3(x0, y0, z) then
+                        local ok, b = pcall(dfhack.buildings.constructBuilding, {
+                            type = btype,
+                            subtype = kind,
+                            pos = xyz2pos(x0 + 1, y0 + 1, z),
+                        })
+                        if ok and b then
+                            pcall(dfhack.run_command, 'prioritize', '-a', 'ConstructBuilding')
+                            return true
                         end
                     end
                 end
-                if done then break end
             end
         end
     end
-    if #placed > 0 then
-        pcall(dfhack.run_command, 'prioritize', '-a', 'ConstructBuilding')
+    return false, 'no clear 3x3 ground within 18 tiles of the anchor'
+end
+
+function ensure_workshops()
+    local ax = anchor()
+    if not ax then return {}, 'no anchor and no citizens' end
+    local placed = {}
+    for _, want in ipairs(WANTED_SHOPS) do
+        if not have_shop(want.subtype)
+                and place_building(df.building_type.Workshop, want.subtype) then
+            table.insert(placed, want.name)
+        end
     end
     return placed
 end

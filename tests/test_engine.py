@@ -30,7 +30,7 @@ from antfarm.knowledge_graph import SimulationKnowledgeGraph  # noqa: E402
 from antfarm.sdk import BasePlugin, PluginManager            # noqa: E402
 from antfarm.twitch import (ClaimPersistenceError, ClaimRegistry,
                             TwitchBridge)                    # noqa: E402
-from antfarm.tui import (format_manager_order_status,
+from antfarm.tui import (format_manager_order_status, format_mood_status,
                          format_subsystem_health)             # noqa: E402
 
 
@@ -103,6 +103,45 @@ class HighRiskGuidance(unittest.TestCase):
             "`antfarm_military create` then `enlist` |",
             docs,
         )
+
+
+class StrangeMoodDashboard(unittest.TestCase):
+    def test_quiet_without_moods(self):
+        self.assertIsNone(format_mood_status({"moods": [], "waiting": [], "failed": []}))
+        self.assertIsNone(format_mood_status(None))
+
+    def test_lists_only_what_is_still_missing(self):
+        line = format_mood_status({"moods": [{
+            "name": "Urist", "mood": "Fey",
+            "requirements": [
+                {"what": "bauxite boulder", "need": 1, "got": 1, "free": 0, "forbidden": 0},
+                {"what": "rough", "need": 2, "got": 0, "free": 3, "forbidden": 0},
+            ]}]})
+        self.assertIn("Urist (Fey)", line)
+        self.assertIn("rough 0/2", line)
+        self.assertNotIn("bauxite", line)
+        self.assertNotIn("none in fort", line)
+
+    def test_calls_out_a_requirement_the_fort_cannot_meet(self):
+        line = format_mood_status({"moods": [{
+            "name": "Urist", "mood": "Possessed",
+            "requirements": [{"what": "iron bar", "need": 150, "got": 0,
+                              "free": 0, "forbidden": 0}]}]})
+        self.assertIn("iron bar 0/150", line)
+        self.assertIn("none in fort", line)
+
+    def test_waiting_and_failed_moods(self):
+        line = format_mood_status({"moods": [],
+                                   "waiting": [{"name": "Ast", "mood": "Fey"}],
+                                   "failed": [{"name": "Bim", "mood": "Berserk"}]})
+        self.assertIn("Ast (Fey) - looking for a workshop", line)
+        self.assertIn("MOOD FAILED", line)
+        self.assertIn("Bim is Berserk", line)
+
+    def test_dwarf_names_are_escaped_for_rich_markup(self):
+        line = format_mood_status({"moods": [{"name": "[bold]x", "mood": "Fey",
+                                              "requirements": []}]})
+        self.assertIn("\\[bold]x", line)
 
 
 class ManagerOrderDiagnostics(unittest.TestCase):

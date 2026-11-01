@@ -190,6 +190,56 @@ def format_manager_order_status(orders):
     return f"[bold #FFC857]MANAGER ORDERS:[/] {details}"
 
 
+def format_mood_status(mood):
+    """One line per strange mood: who, what kind, and what is still missing.
+
+    A mood is a countdown -- a dwarf who cannot gather materials goes insane --
+    so anything missing that nothing in the fort matches is called out.
+    """
+    if not isinstance(mood, dict):
+        return None
+
+    def text(value, default="?"):
+        return escape(str(value)) if value not in (None, "") else default
+
+    def number(value):
+        return value if type(value) is int and value >= 0 else 0
+
+    lines = []
+    for m in mood.get("moods") or []:
+        if not isinstance(m, dict):
+            continue
+        missing = []
+        for q in m.get("requirements") or []:
+            if not isinstance(q, dict):
+                continue
+            need, got = number(q.get("need")), number(q.get("got"))
+            if got >= need:
+                continue
+            item = f"{text(q.get('what'), 'item')} {got}/{need}"
+            if number(q.get("free")) + number(q.get("forbidden")) == 0:
+                item += " [#FF4040](none in fort)[/]"
+            missing.append(item)
+        wants = ", ".join(missing) if missing else "has everything"
+        lines.append(
+            f"[bold #C77DFF]STRANGE MOOD:[/] {text(m.get('name'))} "
+            f"({text(m.get('mood'))}) - {wants}"
+        )
+    for w in mood.get("waiting") or []:
+        if isinstance(w, dict):
+            lines.append(
+                f"[bold #C77DFF]STRANGE MOOD:[/] {text(w.get('name'))} "
+                f"({text(w.get('mood'))}) - looking for a workshop"
+            )
+    for f in mood.get("failed") or []:
+        if isinstance(f, dict):
+            lines.append(
+                f"[bold #FF4040]MOOD FAILED:[/] {text(f.get('name'))} "
+                f"is {text(f.get('mood'))}"
+            )
+    return "\n".join(lines) if lines else None
+
+
 def render_progress_bar(value, max_value, width=15, color="cyan"):
     if max_value <= 0:
         return "░" * width
@@ -413,6 +463,10 @@ class HeaderWidget(Static):
                            f"{ui.get('screens_dismissed', 0)} screen(s)"
                            f"{'  |  ' + last[:70] if last else ''}[/]")
             stats_line += f"\n{ui_line}"
+
+        mood_line = format_mood_status((subsystems or {}).get("mood"))
+        if mood_line:
+            stats_line += f"\n{mood_line}"
 
         orders_line = format_manager_order_status((subsystems or {}).get("orders"))
         if orders_line:
