@@ -208,18 +208,27 @@ Related and also missing: the **elven wood embargo enforcement**. Race detection
 exists and exports are pinned to stone, but nothing prevents a wooden bin being
 offered, which is what actually triggers the war (AGENTS.md 6.27).
 
-### 3.2. Strange moods
+### 3.2. Strange moods — first half implemented and verified live
 
-Gap #12. Nothing detects a moody dwarf, reads the claimed workshop's
-`job_items`, or supplies what is missing. The last mood on the live fort
-succeeded *by luck* — it wanted bauxite and the fort sits on 367 blocks of it.
-The failure case is permanent: the dwarf goes insane and is lost.
+`antfarm_mood.lua` (dispatched first in the server's subsystem list, every 60s)
+reads each mood job's `job_items` exactly as DFHack's `showmood` does. It reports
+needed / gathered / reachable / forbidden per requirement, unforbids just enough
+when only forbidden matches exist, warns once when nothing in the fort matches,
+and **places the workshop a mood needs when the fort has none of that kind**
+(never a magma forge). The dashboard shows a `STRANGE MOOD` line.
 
-The design is in [`AUTOMATION-GAPS.md`](AUTOMATION-GAPS.md) §12 and is tractable,
-because `job_items` states the demand exactly — item type, material, quantity
-wanted, quantity supplied. No guessing from announcement text. The escalation
-ladder (unforbid → prioritise → queue production → butcher for bone → last-resort
-`createitem`) is specified there.
+**Verified 2026-10-31 on the disposable `region_smoke` copy:** `strangemood
+-force -type fey` gave a jeweller mood in a fort with no Jeweler's workshop. The
+module placed one, it was built and claimed, and the dwarf made *Osdin Giken, a
+perfect brown zircon*. The live run also caught a bug the stub hid:
+`dfhack.job.isSuitableItem` does not check item type, so a rough-gem demand had
+matched 1086 stones; the module now checks type and subtype itself, and the stub
+behaves like the real function.
+
+Still open, from the escalation ladder in
+[`AUTOMATION-GAPS.md`](AUTOMATION-GAPS.md) §12: queueing production for a
+missing material, butchering for bone/shell, and the last-resort `createitem`,
+which needs an explicit operator opt-in because it is a cheat on stream.
 
 ### 3.3. Justice
 
@@ -327,8 +336,8 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
    from step 4 to step 7 on 2026-10-31 once brewing orders and both picks were
    in use. Digging is now limited by having two picks: more need a smelter and
    forge (Dreamfort `/industry2`, step 10) or the trade driver below.
-2. **Strange moods** — cheapest high-stakes win; loses a dwarf permanently when
-   it fails.
+2. **Strange moods, second half** — production, butchering and an opt-in
+   `createitem` for demands nothing in the fort matches.
 3. **Verify `antfarm_military create`** once by hand, then let enlistment run.
 4. **Trade-screen driver** — the only path to iron on this map.
 5. **Locations**, then flip the petition handler from decline to accept.
