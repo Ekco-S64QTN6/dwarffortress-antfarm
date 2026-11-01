@@ -18,14 +18,22 @@ local function check(name, ok)
     end
 end
 
-local count = 0
+local count, paused_only = 0, false
 for line in content:gmatch('[^\n]+') do
-    if line:match('^%s*workNow%s+2%s*$') then count = count + 1 end
+    if line:match('^%s*workNow%s+2%s*
+
+print(('%d passed, %d failed'):format(pass, fail))
+if fail > 0 then error(('%d workNow init tests failed'):format(fail)) end
+) then count = count + 1 end
+    if line:match('^%s*workNow%s+1%s*
+
+print(('%d passed, %d failed'):format(pass, fail))
+if fail > 0 then error(('%d workNow init tests failed'):format(fail)) end
+) then paused_only = true end
 end
 
 check('job completion immediately triggers a new assignment pass', count == 1)
-check('paused-only workNow mode is not used instead', 
-      content:match('^%s*workNow%s+1%s*$') == nil)
+check('paused-only workNow mode is not used instead', not paused_only)
 
 print(('%d passed, %d failed'):format(pass, fail))
 if fail > 0 then error(('%d workNow init tests failed'):format(fail)) end
