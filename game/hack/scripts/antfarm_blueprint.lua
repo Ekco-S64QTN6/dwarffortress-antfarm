@@ -830,11 +830,21 @@ function apply_step(index, force)
     save_plan()
 
     -- Import an orders library once the fort is far enough along to use it.
+    -- Only persist completion when DFHack accepts the command. A Lua pcall
+    -- only reports thrown errors; run_command can return a failure code without
+    -- throwing, and marking the library first would suppress every retry.
     for _, ol in ipairs(ORDER_LIBS) do
         if plan.step > ol.after and not plan.orders_done[ol.lib] then
-            plan.orders_done[ol.lib] = true
             print('  > orders import ' .. ol.lib .. '  (' .. ol.note .. ')')
-            pcall(dfhack.run_command, 'orders import ' .. ol.lib)
+            local ok, result = pcall(dfhack.run_command, 'orders import ' .. ol.lib)
+            if ok and result == CR_OK then
+                plan.orders_done[ol.lib] = true
+            else
+                local reason = ok and ('command returned ' .. tostring(result))
+                    or tostring(result)
+                dfhack.printerr(('antfarm_blueprint: orders import %s failed (%s); '
+                    .. 'will retry after a later build step'):format(ol.lib, reason))
+            end
         end
     end
     save_plan()

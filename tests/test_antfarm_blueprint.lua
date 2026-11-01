@@ -298,5 +298,35 @@ do
     check('set_auto(true) turns auto on', env.progress().auto == true)
 end
 
+-- A rejected orders-library import must remain pending for a later retry.
+-- run_command can return a failure code without throwing, so pcall alone is
+-- not evidence that the library was imported.
+do
+    local w, env = fresh()
+    anchored(w, env)
+    local attempts = 0
+    w.dfhack.run_command = function(command)
+        if command == 'orders import library/basic' then
+            attempts = attempts + 1
+            if attempts == 1 then return 5 end -- simulated non-CR_OK result
+        end
+        return 0
+    end
+
+    check('forced step 5 advances to the basic-order import milestone',
+          env.apply_step(5, true) == true)
+    check('a failed library import is attempted once and reported',
+          attempts == 1 and #w.errors > 0,
+          ('attempts=%d errors=%d'):format(attempts, #w.errors))
+
+    env.apply_step(5, true)
+    check('the failed basic-order import is retried on a later completed step',
+          attempts == 2, tostring(attempts))
+
+    env.apply_step(5, true)
+    check('a successful basic-order import is not repeated',
+          attempts == 2, tostring(attempts))
+end
+
 print(('\n%d passed, %d failed'):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
