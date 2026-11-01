@@ -45,7 +45,7 @@ Grouped, roughly in dependency order. `antfarm_checklist` reports each as
 | Check | Passes when | Fixed by |
 | :-- | :-- | :-- |
 | drink stock | ≥ 2 drinks per citizen | `antfarm_sustenance all` |
-| booze production | a still exists, plants on hand, brew orders queued | `antfarm_sustenance workshops` |
+| booze production | a still exists, plants on hand, brew orders queued | `antfarm_sustenance all` (imports `library/basic` once a still is built) |
 | food stock | ≥ 2 edible items per citizen | `antfarm_sustenance all` |
 | a bed for everyone | beds ≥ citizens | `antfarm_quarters status`, then `antfarm_quarters orders` and `antfarm_quarters beds` as appropriate |
 | indoor meeting area | a meeting zone that is **not** outside | `antfarm_locations hall` |

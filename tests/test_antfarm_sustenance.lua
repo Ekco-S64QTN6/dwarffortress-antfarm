@@ -132,5 +132,120 @@ do
           notes)
 end
 
+-- ---------------------------------------------------------------- --
+-- brewing orders                                                    --
+-- ---------------------------------------------------------------- --
+
+local function add_still(w, finished)
+    table.insert(w.df.global.world.buildings.all, {
+        type = w.df.workshop_type.Still,
+        getType = function() return w.df.building_type.Workshop end,
+        getBuildStage = function() return finished and 1 or 0 end,
+        getMaxBuildStage = function() return 1 end,
+    })
+end
+
+-- Wire the real blueprint module in, so this exercises the actual plan
+-- bookkeeping rather than a stand-in for it.
+local function with_blueprint(w)
+    w.df.global.world.manager_orders = {}
+    local bp = stub.load(w, 'game/hack/scripts/antfarm_blueprint.lua')
+    w.scripts = {antfarm_blueprint = bp}
+    return bp
+end
+
+local function imports(calls)
+    local n = 0
+    for _, call in ipairs(calls) do
+        if call[1] == 'orders import library/basic' then n = n + 1 end
+    end
+    return n
+end
+
+-- The live failure: a still and no brew order, because library/basic waits for
+-- build step 5. No still yet is a wait, not an error.
+do
+    local w, env, calls = fresh(0)
+    local bp = with_blueprint(w)
+    local ok, why = env.ensure_brew_orders()
+    check('no still: nothing imported and no failure reported',
+          ok == nil and imports(calls) == 0, tostring(why))
+
+    add_still(w, false)
+    ok = env.ensure_brew_orders()
+    check('an unbuilt still does not import the brewing orders',
+          ok == nil and imports(calls) == 0)
+
+    w.df.global.world.buildings.all = {}
+    add_still(w, true)
+    ok = env.ensure_brew_orders()
+    check('a finished still imports library/basic ahead of build step 5',
+          ok == true and imports(calls) == 1, tostring(imports(calls)))
+    check('the import is recorded in the plan',
+          bp.antfarm_plan.orders_done['library/basic'] == true)
+
+    env.ensure_brew_orders()
+    check('a recorded import is not repeated', imports(calls) == 1)
+end
+
+-- Re-anchoring clears orders_done but the fort keeps its orders. Importing
+-- again would duplicate all 46, so the game itself is the source of truth.
+do
+    local w, env, calls = fresh(0)
+    local bp = with_blueprint(w)
+    w.df.global.world.manager_orders = {{reaction_name = 'BREW_DRINK_FROM_PLANT'}}
+    add_still(w, true)
+    local ok = env.ensure_brew_orders()
+    check('brew orders already in the fort are adopted, not re-imported',
+          ok == true and imports(calls) == 0
+          and bp.antfarm_plan.orders_done['library/basic'] == true)
+end
+
+-- A rejected import is a failure with a reason, and stays retryable.
+do
+    local w, env, calls = fresh(function(cmd)
+        if cmd == 'orders import library/basic' then return 3 end
+        return 0
+    end)
+    local bp = with_blueprint(w)
+    add_still(w, true)
+    local ok, why = env.ensure_brew_orders()
+    check('a rejected import reports the DFHack return code',
+          ok == false and tostring(why):find('command returned 3', 1, true) ~= nil,
+          tostring(why))
+    check('a rejected import is not recorded as done',
+          not bp.antfarm_plan.orders_done['library/basic'])
+end
+
+-- The background tick places workshops and imports the orders in one pass,
+-- and notes the placement it made (it used to run placement twice and lose it).
+do
+    local w, env, calls = fresh(0)
+    with_blueprint(w)
+    add_still(w, true)
+    w.advance(300000)
+    env.tick()
+    local notes = table.concat(env.antfarm_sustenance_state.notes, ' | ')
+    check('tick imports the brewing orders once a still is finished',
+          imports(calls) == 1 and notes:find('brewing orders in place', 1, true) ~= nil,
+          notes)
+    check('report exposes the brewing-order state', env.report().brew_orders == true)
+end
+
+do
+    local w, env = fresh(0)
+    local placements = 0
+    env.ensure_workshops = function()
+        placements = placements + 1
+        return {'Kitchen'}
+    end
+    w.advance(300000)
+    env.tick()
+    local notes = table.concat(env.antfarm_sustenance_state.notes, ' | ')
+    check('tick runs workshop placement exactly once', placements == 1, tostring(placements))
+    check('tick notes the workshop it placed',
+          notes:find('placed a Kitchen', 1, true) ~= nil, notes)
+end
+
 print(('\n%d passed, %d failed'):format(pass, fail))
 if fail > 0 then error(('%d antfarm_sustenance tests failed'):format(fail)) end

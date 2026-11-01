@@ -103,7 +103,7 @@ local CHECKS = {
  end},
 
 {group = 'survival', critical = true, name = 'booze production',
- fix = 'antfarm_sustenance workshops', check = function()
+ fix = 'antfarm_sustenance all', check = function()
     local still = count_buildings(df.building_type.Workshop, df.workshop_type.Still)
     local plants = count_items(df.item_type.PLANT)
     local brew = 0

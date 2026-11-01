@@ -30,7 +30,8 @@
 --   antfarm_sustenance gather     site (or re-site) the gathering zone
 --   antfarm_sustenance workshops  build still / kitchen / farmer's workshop
 --   antfarm_sustenance labour     cap tool labours, guarantee gatherers
---   antfarm_sustenance all        do all three
+--   antfarm_sustenance brew       import the brewing orders once a still is built
+--   antfarm_sustenance all        do all four
 
 --@module = true
 
@@ -264,6 +265,45 @@ function ensure_workshops()
 end
 
 -- ---------------------------------------------------------------- --
+-- brewing orders                                                   --
+-- ---------------------------------------------------------------- --
+
+-- A still is only half the job; nobody brews without a manager order. The
+-- brewing orders ship in Dreamfort's library/basic, which the build schedule
+-- imports after step 5 -- and step 5 waits on surface digging. A live fort sat
+-- at step 4 with a finished still, a gathering zone and four idle dwarves, and
+-- not one brew order. So import that library as soon as a still is finished,
+-- through the blueprint, which records it so step 5 does not import it again.
+local BREW_LIBRARY = 'library/basic'
+
+local function still_finished()
+    for _, b in ipairs(df.global.world.buildings.all) do
+        if b:getType() == df.building_type.Workshop then
+            local ok, done = pcall(function()
+                return b.type == df.workshop_type.Still
+                    and b:getBuildStage() >= b:getMaxBuildStage()
+            end)
+            if ok and done then return true end
+        end
+    end
+    return false
+end
+
+-- Returns true when the brewing orders are (now) in place, false plus a reason
+-- otherwise. Waiting for a still is not a failure, so it returns nil.
+function ensure_brew_orders()
+    if not still_finished() then return nil, 'no finished still yet' end
+    local ok, bp = pcall(reqscript, 'antfarm_blueprint')
+    if not ok or not bp or not bp.import_order_library then
+        return false, 'antfarm_blueprint unavailable: ' .. tostring(bp)
+    end
+    local okc, done, reason = pcall(bp.import_order_library, BREW_LIBRARY)
+    if not okc then return false, tostring(done) end
+    if not done then return false, reason end
+    return true
+end
+
+-- ---------------------------------------------------------------- --
 -- labour                                                           --
 -- ---------------------------------------------------------------- --
 
@@ -336,8 +376,26 @@ function tick()
     if now - antfarm_sustenance_state.last_run < RUN_INTERVAL_SEC then return end
     antfarm_sustenance_state.last_run = now
 
-    local placed = select(1, pcall(ensure_workshops)) and ensure_workshops() or {}
-    for _, p in ipairs(placed) do note('placed a ' .. p) end
+    -- One protected call. This used to run ensure_workshops() twice -- once to
+    -- place, once to report -- so the second call saw nothing missing and no
+    -- placement was ever noted.
+    local ok_shops, placed = pcall(ensure_workshops)
+    if not ok_shops then
+        note('workshop placement failed: ' .. tostring(placed))
+    else
+        for _, p in ipairs(placed) do note('placed a ' .. p) end
+    end
+
+    local had_brew = antfarm_sustenance_state.brew_ok
+    local ok_brew, brewing, why = pcall(ensure_brew_orders)
+    if not ok_brew then
+        note('brew orders failed: ' .. tostring(brewing))
+    elseif brewing == false then
+        note('brew orders not imported: ' .. tostring(why))
+    elseif brewing and not had_brew then
+        note('brewing orders in place (' .. BREW_LIBRARY .. ')')
+    end
+    antfarm_sustenance_state.brew_ok = ok_brew and brewing == true
 
     local ok, msg = pcall(ensure_gather_zone, false)
     if ok and msg == true then note('sited a gathering zone') end
@@ -377,6 +435,7 @@ function report()
         workshops = shops,
         gather_zone = zone ~= nil,
         gather_shrubs = shrubs,
+        brew_orders = antfarm_sustenance_state.brew_ok == true,
         notes = antfarm_sustenance_state.notes,
     }
 end
@@ -395,6 +454,10 @@ elseif verb == 'workshops' then
     local placed = ensure_workshops()
     if #placed == 0 then print('antfarm_sustenance: still, kitchen and farmer\'s workshop all present')
     else print('antfarm_sustenance: placed ' .. table.concat(placed, ', ')) end
+elseif verb == 'brew' then
+    local ok, why = ensure_brew_orders()
+    if ok then print('antfarm_sustenance: brewing orders in place (' .. BREW_LIBRARY .. ')')
+    else print('antfarm_sustenance: brewing orders not imported -- ' .. tostring(why)) end
 elseif verb == 'labour' or verb == 'labor' then
     for _, n in ipairs(tune_labour()) do print('antfarm_sustenance: ' .. n) end
 elseif verb == 'all' then
@@ -402,6 +465,9 @@ elseif verb == 'all' then
     if #placed > 0 then print('antfarm_sustenance: placed ' .. table.concat(placed, ', ')) end
     local _, msg = ensure_gather_zone(false)
     print('antfarm_sustenance: ' .. tostring(msg))
+    local brewing, why = ensure_brew_orders()
+    print('antfarm_sustenance: brewing orders ' ..
+        (brewing and 'in place' or ('not imported -- ' .. tostring(why))))
     for _, n in ipairs(tune_labour()) do print('antfarm_sustenance: ' .. n) end
 else
     local r = report()
