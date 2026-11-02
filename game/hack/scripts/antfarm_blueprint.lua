@@ -1424,6 +1424,12 @@ end
 -- is stuck -- unreachable designations, damp stone, suspended constructions --
 -- sits on the same number forever, and the fort quietly stops building. Notice
 -- that, try the cheap fixes, and record it where the dashboard can see it.
+-- A handful of tiles or jobs that will not finish must not cost the fort its next
+-- step. One stubborn tile held /farming2 for 40 minutes with 18 of 19 dwarves idle
+-- and food running out. Small leftovers get a shorter wait, then are stepped past.
+local GATE_LEFTOVER = 25
+local LEFTOVER_STALL_SEC = 300
+
 local function track_stall(plan, why, pending)
     local now = os.time()
     pending = pending or -1
@@ -1435,7 +1441,8 @@ local function track_stall(plan, why, pending)
         save_plan()
         return
     end
-    if now - plan.gate_since < STALL_SEC then return end
+    local limit = (pending > 0 and pending <= GATE_LEFTOVER) and LEFTOVER_STALL_SEC or STALL_SEC
+    if now - plan.gate_since < limit then return end
 
     plan.stalled = true
     local did = remediate(plan, why)
@@ -1484,7 +1491,18 @@ local function auto_tick()
                     -- rather than the next AUTO_POLL_SEC.
                     if apply_step(plan.step, false) then auto_last = 0 end
                 else
+                    local was_stalled = plan.stalled
                     track_stall(plan, why, pending)
+                    -- Remediation had its chance on the last stall; still stuck.
+                    if was_stalled and plan.stalled and pending and pending > 0
+                            and pending <= GATE_LEFTOVER then
+                        record_warning(plan, step, plan.step,
+                            ('moved on with %s'):format(tostring(why)))
+                        plan.gate_since, plan.gate_pending = 0, -1
+                        plan.stalled, plan.stall_reason = false, nil
+                        -- Forced: apply_step checks this same gate itself.
+                        if apply_step(plan.step, true) then auto_last = 0 end
+                    end
                 end
             end
         end

@@ -112,6 +112,9 @@ end
 -- checks were aquifer and salt -- then reported "embarked." while the game sat
 -- on the site screen forever. An occupied tile needs reclaim, not embark, so it
 -- is not a candidate.
+local MIN_SOIL_LEVELS = 3
+local THIN_SOIL_PENALTY = 5000
+
 local function occupied_tiles()
     local set = {}
     local ok = pcall(function()
@@ -141,6 +144,22 @@ function scan(width, height)
     -- named "y" off an entry and raises.
     local map = wd.region_map
     local function at(x, y) return map[x]:_displace(y) end
+    -- Levels of soil at the top of a region's geology. The farming level sits two
+    -- below the surface and plots go straight into soil; a site with less means no
+    -- farms until a floor is muddied. One such embark never built a plot.
+    local function soil_levels(e)
+        local ok, n = pcall(function()
+            local count = 0
+            local layers = wd.geo_biomes[e.geo_index].layers
+            for i = 0, #layers - 1 do
+                local kind = df.geo_layer_type[layers[i].type]
+                if kind ~= 'SOIL' and kind ~= 'SOIL_OCEAN' and kind ~= 'SOIL_SAND' then break end
+                count = count + layers[i].top_height - layers[i].bottom_height + 1
+            end
+            return count
+        end)
+        return ok and n or nil
+    end
     local out = {}
     local rejected = {ocean = 0, slope = 0, evil = 0, savage = 0,
                       cold = 0, barren = 0, occupied = 0}
@@ -149,6 +168,7 @@ function scan(width, height)
     for x = 0, W - width do
         for y = 0, H - height do
             local lo, hi = 9999, -9999
+            local thin_soil = false
             local evil, savage, veg, temp, drain = 0, 0, 0, 0, 0
             local ok = true
             local n = 0
@@ -162,6 +182,8 @@ function scan(width, height)
                     end
                     local e = at(x + dx, y + dy)
                     local elev = e.elevation
+                    local soil = soil_levels(e)
+                    if soil and soil < MIN_SOIL_LEVELS then thin_soil = true end
                     if elev < OCEAN_LEVEL then
                         rejected.ocean = rejected.ocean + 1
                         ok = false
@@ -205,6 +227,9 @@ function scan(width, height)
                     -- drainage is desert rock, very low is wetland (and, in
                     -- practice, aquifers).
                     score = score - math.abs(drain - 50) * 0.6
+                    -- Below every site with soil, however flat, but still usable
+                    -- if a whole world has nothing better.
+                    if thin_soil then score = score - THIN_SOIL_PENALTY end
                     table.insert(out, {
                         x = x, y = y, spread = spread, score = score,
                         evil = evil, savage = savage,

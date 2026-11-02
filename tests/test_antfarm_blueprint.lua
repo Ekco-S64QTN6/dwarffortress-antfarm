@@ -341,6 +341,37 @@ do
     check('gives up rather than fight DF forever', env.ensure_entrance(plan) == 0)
 end
 
+-- A few tiles that will never finish must not hold a step forever.
+do
+    local w, env = fresh()
+    anchored(w, env)
+    local levels = env.antfarm_plan.levels
+    env.antfarm_plan.step = 5
+    env.antfarm_plan.attempts = {}
+    w.designate(96, 96, levels.surface, w.df.tile_dig_designation.Default)
+    local pending
+    w.dfhack.timeout = function(_, _, fn) pending = fn; return 1 end
+    local real_time, clock = os.time, 1000000
+    os.time = function() return clock end
+    env.set_auto(true)
+    local function poll(n)
+        for _ = 1, n do
+            w.advance(10000)
+            clock = clock + 10
+            local fn = pending
+            pending = nil
+            if fn then fn() end
+        end
+    end
+    poll(10)
+    check('a short wait holds the step', env.progress().step == 5, env.progress().step)
+    poll(70)
+    os.time = real_time
+    check('a stubborn leftover is stepped past', env.progress().step > 5, env.progress().step)
+    local warned = table.concat(env.progress().warnings, ' | ')
+    check('and it is recorded', warned:find('moved on', 1, true) ~= nil, warned)
+end
+
 -- The opening must not be paced. A live embark spent four real minutes getting to
 -- /surface2 with five of seven dwarves idle, because every step waited 60 seconds
 -- behind the last whether or not it had anything to wait for.

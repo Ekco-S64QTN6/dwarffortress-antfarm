@@ -69,10 +69,14 @@ local function citizens()
     return out
 end
 
+-- Units, not items: drink comes in stacks, so counting items read 156 drinks as 13
+-- and raised a false shortage.
 local function count_items(item_type)
     local n = 0
     for _, it in ipairs(df.global.world.items.all) do
-        if it:getType() == item_type then n = n + 1 end
+        if it:getType() == item_type then
+            n = n + (it.getStackSize and it:getStackSize() or 1)
+        end
     end
     return n
 end

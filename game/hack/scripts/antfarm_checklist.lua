@@ -43,9 +43,10 @@ local function citizens()
 end
 
 local function count_items(t)
+    -- Units, not items: drink and food come in stacks.
     local n = 0
     for _, it in ipairs(df.global.world.items.all) do
-        if it:getType() == t then n = n + 1 end
+        if it:getType() == t then n = n + (it.getStackSize and it:getStackSize() or 1) end
     end
     return n
 end
