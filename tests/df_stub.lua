@@ -177,16 +177,17 @@ function M.new()
 
     local function block_key(bx, by, bz) return bx .. ',' .. by .. ',' .. bz end
     local function make_block(bx, by, bz)
-        local des, tts = {}, {}
+        local des, tts, walk = {}, {}, {}
         for x = 0, 15 do
-            des[x], tts[x] = {}, {}
+            des[x], tts[x], walk[x] = {}, {}, {}
             for y = 0, 15 do
+                walk[x][y] = 0
                 des[x][y] = {dig = 0, water_table = false, flow_size = 0}
                 tts[x][y] = tt_of(df.tiletype_material.STONE, df.tiletype_shape.WALL)
             end
         end
         return {map_pos = {x = bx * 16, y = by * 16, z = bz},
-                designation = des, tiletype = tts, flags = {designated = false}}
+                designation = des, tiletype = tts, walkable = walk, flags = {designated = false}}
     end
     -- Create (or fetch) the block covering a tile.
     function w.block_at(x, y, z)
@@ -269,7 +270,7 @@ function M.new()
     dfhack.run_command = function(cmd) table.insert(w.commands, cmd); return 0 end
     dfhack.run_command_silent = function(cmd)
         table.insert(w.commands, cmd)
-        return (w.command_output or {})[cmd] or '', 0
+        return (w.command_output or {})[cmd] or '', w.command_status or 0
     end
     dfhack.gui = {
         getCurViewscreen = function() return top() end,

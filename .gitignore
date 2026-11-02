@@ -43,3 +43,6 @@ __pycache__/
 # files. The curated blueprints the game actually loads live in
 # game/blueprints/community/ and are committed.
 community_blueprints/
+
+# Generated at runtime from Dreamfort for the fort's real farming depth.
+game/blueprints/antfarm_farming_link.csv

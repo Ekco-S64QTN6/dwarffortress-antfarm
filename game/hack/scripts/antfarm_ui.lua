@@ -1220,6 +1220,55 @@ local function quiet_status_flags()
 end
 
 -- Called once per bridge poll. Returns what happened, for the state file.
+-- The clock does not run while the map's sidebar is in a menu. A quickfort query
+-- whose target was missing left a live fort in "move the cursor to the stockpile
+-- you want to take from", frozen, with every automated step holding because the
+-- game was "not on the map". One key per pass, re-reading the mode each time:
+-- keys can be queued, and LEAVESCREEN from Default opens the abandon menu.
+--
+-- Armed at once when our own blueprint run left the menu open. Otherwise only
+-- while a client drives the fort, so a human's open menu is never closed.
+local STRAY_MS = 5000
+
+function arm_stray_cleanup() antfarm_ui.stray_armed = true end
+
+-- The `warn-starving` repeat in onMapLoad.init opens a DFHack dialog that stops the
+-- clock until someone answers it, and DFHack screens are otherwise off limits here.
+-- A live fort froze on it with nobody at the keyboard. Keep the warning, lose the wait.
+local function handle_starving_dialog(now)
+    if not antfarm_ui.screens_enabled then return end
+    local scr, _, focus = current_screen()
+    if not scr or not tostring(focus):find('warn-starving', 1, true) then return end
+    if now - (antfarm_ui.starving_key_at or 0) < RETRY_MS then return end
+    antfarm_ui.starving_key_at = now
+    gui.simulateInput(scr, 'LEAVESCREEN')
+    note('danger', 'warn-starving: a citizen is starving, dehydrated or exhausted')
+end
+
+local function handle_stray_mode(now)
+    local ok, scr = pcall(function()
+        if not dfhack.isMapLoaded() then return nil end
+        if df.global.ui.main.mode == df.ui_sidebar_mode.Default then return nil end
+        if #df.global.world.status.popups > 0 then return nil end
+        local top = dfhack.gui.getCurViewscreen()
+        return df.viewscreen_dwarfmodest:is_instance(top) and top or nil
+    end)
+    if not ok or not scr then
+        antfarm_ui.stray_since, antfarm_ui.stray_armed = nil, false
+        return nil
+    end
+    antfarm_ui.stray_since = antfarm_ui.stray_since or now
+    if not antfarm_ui.stray_armed then
+        if not antfarm_ui.screens_enabled or now - antfarm_ui.stray_since < STRAY_MS then return nil end
+    end
+    if now - (antfarm_ui.stray_key_at or 0) < RETRY_MS then return nil end
+    antfarm_ui.stray_key_at = now
+    gui.simulateInput(scr, 'LEAVESCREEN')
+    antfarm_ui.stats.stray = (antfarm_ui.stats.stray or 0) + 1
+    note('stray', 'left a sidebar menu that had stopped the game clock')
+    return true
+end
+
 function tick()
     local now = wall_ms()
 
@@ -1239,6 +1288,8 @@ function tick()
     local popups = handle_popups(now)
     local pause = handle_pause(now)
     if not dismissed then dismissed = handle_screen(now) end
+    handle_stray_mode(now)
+    handle_starving_dialog(now)
 
     if antfarm_ui.screens_enabled and is_dwarfmode() and petition_count() > 0 then
         check_petitions()

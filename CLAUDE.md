@@ -279,6 +279,12 @@ silently disagreed before (a stripped trailing space made every nickname *clear*
 - **The embark loadout is a community preset.** `antfarm_autostart.PROFILE_TITLE` names one from
   `data/init/embark_profiles.txt`. Pick from those rather than writing a new one.
 
+- **A sidebar menu stops the game clock.** `pause_state` reads false while the map's sidebar is in a
+  query or link menu, and time does not pass. A failed quickfort query can leave one open; `antfarm_ui`
+  closes it. Read `cur_year_tick` to tell whether the game is really running.
+- **`quickfort run` query steps are not safe to repeat.** A second pass over stockpiles it already
+  configured fails. Retries are bounded, and manager orders import once per step.
+
 - **Never write `manager_order.status` bits.** Forcing `validated`/`active` to make work
   orders issue segfaulted DF silently — no error, no core, nothing in the log (AGENTS.md 6.1.12).
   Read them; never write them.

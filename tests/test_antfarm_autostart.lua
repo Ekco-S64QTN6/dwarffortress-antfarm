@@ -114,5 +114,42 @@ do
     check('no embark key sent over budget', table.concat(w.keys_pressed(), ',') == 'SELECT')
 end
 
+-- Continuing a fort: DFHack's load screen cannot be typed into.
+do
+    local _, env = setup_world()
+    check('the only save is taken', env.choose_save({'region2'}) == 'region2')
+    check('ANTFARM_REGION picks between several',
+          env.choose_save({'region1', 'region2'}, 'region2') == 'region2')
+    local none, why = env.choose_save({'region1', 'region2'})
+    check('several saves and no choice is refused, never guessed',
+          none == nil and why:find('ANTFARM_REGION', 1, true), why)
+    local wrong = env.choose_save({'region1'}, 'region9')
+    check('a named save that is not there is refused', wrong == nil)
+end
+
+do
+    local w = stub.new()
+    local saves = stub.vector{{folder_name = 'region2'}}
+    local list = {vtype = 'viewscreen_loadgamest', saves = saves}
+    w.push(list)
+    w.push({vtype = 'dfhack_lua', parent = list})
+    w.dfhack.gui.getCurFocus = function() return 'dfhack/lua/load_screen' end
+    w.dfhack.gui.getViewscreenByType = function() return list end
+    local ran = {}
+    w.dfhack.run_command = function(...) table.insert(ran, table.concat({...}, ' ')) end
+    local pending
+    w.dfhack.timeout = function(_, _, fn) pending = fn; return 1 end
+    w.scripts = {}
+    local env = stub.load(w, SCRIPT)
+    env.go()
+    for _ = 1, 3 do
+        local fn = pending
+        pending = nil
+        if fn then fn() end
+    end
+    check('the load screen gets the save loaded', ran[1] == 'load-save region2', ran[1])
+    check('and only once while it loads', #ran == 1, #ran)
+end
+
 print(('%d passed, %d failed'):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
