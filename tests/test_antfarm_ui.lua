@@ -407,6 +407,216 @@ do
 end
 
 
+
+-- ---------------------------------------------------------------- --
+-- The depot: request the broker, bring goods, trade. Key order as mapped on a
+-- live fort, against the real antfarm_trade module.
+local function trade_world(opts)
+    opts = opts or {}
+    local w, env = fresh()
+    local df = w.df
+    df.global.ui.main.mode = df.ui_sidebar_mode.Default
+    df.global.cursor = {x = 0, y = 0, z = 0}
+    df.global.world.selected_building = nil
+    df.item_type = {BAR = 0, SMALLGEM = 1, FIGURINE = 35, AMULET = 36, SCEPTER = 37, CROWN = 39,
+                    RING = 40, EARRING = 41, BRACELET = 42, GEM = 43, GOBLET = 12, TOTEM = 58,
+                    INSTRUMENT = 13, TOY = 14, ROUGH = 3, WEAPON = 80, ANVIL = 81}
+    for k, v in pairs(df.item_type) do if type(k) == 'string' then df.item_type[v] = k end end
+    df.building_type = {TradeDepot = 2, Civzone = 3, Workshop = 4}
+    df.tiletype_shape = df.tiletype_shape
+    df.job_type.TradeAtDepot = 60
+    df.caravan_state = {T_trade_state = {[1] = 'Approaching', [2] = 'AtDepot'}}
+    df.global.cur_year, df.global.cur_season = 25, 2
+
+    local depot = {id = 30, centerx = 10, centery = 11, z = 5, jobs = stub.vector{}}
+    function depot:getType() return df.building_type.TradeDepot end
+    df.global.world.buildings = {all = {depot}}
+    df.global.ui.caravans = stub.vector{{entity = 7, trade_state = opts.approaching and 1 or 2}}
+    df.global.world.raws = {inorganics = stub.vector{}}
+    df.global.world.items = {all = stub.vector{}, other = {WEAPON = stub.vector{}, ANVIL = stub.vector{},
+                                                           ROUGH = stub.vector{}, BAR = stub.vector{}}}
+    w.dfhack.items = {getValue = function(it) return it.value or 10 end}
+    w.dfhack.matinfo = {decode = function() return {material = {flags = {}}} end}
+    w.scripts = {antfarm_ui = env, antfarm_metals = {report = function() return {missing = {}} end}}
+    local trade = stub.load(w, 'game/hack/scripts/antfarm_trade.lua')
+    w.scripts.antfarm_trade = trade
+
+    local function it(type_name, value, sub)
+        local x = {flags = {trader = sub == 'trader-pick'}, value = value,
+                   subtype = sub and {id = 'ITEM_WEAPON_PICK'} or nil}
+        function x:getType() return df.item_type[type_name] end
+        function x:getMaterial() return 0 end
+        function x:getMaterialIndex() return 0 end
+        return x
+    end
+    local pick = it('WEAPON', 100, 'trader-pick')
+    local figurine = it('FIGURINE', 1000)
+    local sellable = opts.no_goods and {} or {{item = figurine, status = 0, value = 1000}}
+    local assign = {vtype = 'viewscreen_layer_assigntradest', info = stub.vector(sellable)}
+    local goods = {vtype = 'viewscreen_tradegoodsst', trader_items = stub.vector{pick},
+                   broker_items = stub.vector(opts.no_goods and {} or {figurine}),
+                   trader_selected = {}, broker_selected = {}}
+    local state = {assign = assign, goods = goods, pick = pick, figurine = figurine}
+
+    w.on_key = function(_, key)
+        local top = w.top()
+        local mode = df.global.ui.main
+        if top == assign or top == goods then
+            if key == 'LEAVESCREEN' then w.pop() end
+            if key == 'TRADE_TRADE' and top == goods and not opts.refuse then
+                state.traded_selection = goods.trader_selected[0]
+                pick.flags.trader = false
+            end
+            return
+        end
+        if top.vtype ~= 'viewscreen_dwarfmodest' then return end
+        if mode.mode == df.ui_sidebar_mode.Default then
+            if key == 'D_BUILDJOB' then mode.mode = df.ui_sidebar_mode.QueryBuilding end
+            if key == 'LEAVESCREEN' then state.abandon_menu = true end
+            return
+        end
+        if key == 'CURSOR_DOWN' and df.global.cursor.x == 10 then
+            df.global.world.selected_building = depot
+        end
+        if key == 'BUILDJOB_DEPOT_REQUEST_TRADER' then
+            depot.jobs:push({job_type = df.job_type.TradeAtDepot})
+        end
+        if key == 'BUILDJOB_DEPOT_BRING' then w.push(assign) end
+        if key == 'BUILDJOB_DEPOT_TRADE' and not opts.broker_away then w.push(goods) end
+        if key == 'LEAVESCREEN' then mode.mode = df.ui_sidebar_mode.Default end
+    end
+    return w, env, trade, state, depot
+end
+
+do
+    local w, env, trade, state, depot = trade_world()
+    env.set_screens_enabled(true)
+    local ok = env.request_trade()
+    run(env, w, 30000)
+    local keys = table.concat(w.keys_pressed(), ',')
+    check('trade: the driver starts while a client drives the fort', ok)
+    check('trade: the keys are exactly the mapped sequence',
+          keys == 'D_BUILDJOB,CURSOR_UP,CURSOR_DOWN,BUILDJOB_DEPOT_REQUEST_TRADER,'
+               .. 'BUILDJOB_DEPOT_BRING,LEAVESCREEN,BUILDJOB_DEPOT_TRADE,TRADE_TRADE,'
+               .. 'LEAVESCREEN,LEAVESCREEN', keys)
+    check('trade: the broker has a job', #depot.jobs == 1)
+    check('trade: exports marked as pending', state.assign.info[0].status == 1)
+    check('trade: the pick is selected', state.traded_selection == 1)
+    check('trade: the figurine pays for it', state.goods.broker_selected[0] == 1)
+    check('trade: the pick is now the fort\'s', state.pick.flags.trader == false)
+    check('trade: back on the map, not the query menu',
+          w.df.global.ui.main.mode == w.df.ui_sidebar_mode.Default and w.top().vtype == 'viewscreen_dwarfmodest')
+    check('trade: never opened the abandon menu', not state.abandon_menu)
+    check('trade: counted', env.report().trades == 1)
+    local v = trade.visit(trade.caravan_at_depot())
+    check('trade: the visit is done', v.traded and v.brought)
+end
+
+do
+    local w, env, trade, state = trade_world({refuse = true})
+    env.set_screens_enabled(true)
+    env.request_trade()
+    run(env, w, 30000)
+    check('trade: a refused offer is not recorded as a trade',
+          not trade.visit(trade.caravan_at_depot()).traded and env.report().trades == 0)
+    check('trade: and still leaves the screen', w.top().vtype == 'viewscreen_dwarfmodest')
+    check('trade: and still leaves the query menu', w.df.global.ui.main.mode == w.df.ui_sidebar_mode.Default)
+    check('trade: it says so', trade.report().notes[1]:find('did not accept', 1, true), trade.report().notes[1])
+end
+
+do
+    -- Broker still walking over: the trade screen will not open. Leave cleanly.
+    local w, env, trade = trade_world({broker_away = true})
+    env.set_screens_enabled(true)
+    env.request_trade()
+    run(env, w, 30000)
+    local keys = w.keys_pressed()
+    check('trade: broker away, nothing is traded', not has(keys, 'TRADE_TRADE'))
+    check('trade: broker away, back on the map',
+          w.df.global.ui.main.mode == w.df.ui_sidebar_mode.Default)
+    check('trade: broker away, tried again next time', not trade.visit(trade.caravan_at_depot()).traded)
+end
+
+do
+    -- A first pass with nothing to send must not close the door on goods finished
+    -- during the visit. Live, this left 20 figurines at home for a whole caravan.
+    local w, env, trade, state = trade_world({no_goods = true})
+    env.set_screens_enabled(true)
+    env.request_trade()
+    run(env, w, 30000)
+    check('trade: nothing to send is not "brought"', not trade.visit(trade.caravan_at_depot()).brought)
+    local line = {item = state.figurine, status = 0, value = 1000}
+    state.assign.info:push(line)
+    w.advance(120000)
+    env.request_trade()
+    run(env, w, 30000)
+    check('trade: goods finished later still go', line.status == 1, line.status)
+end
+
+do
+    local w, env = trade_world()
+    local ok, why = env.request_trade()
+    check('trade: nobody driving the fort, so the UI is left alone', not ok and why:find('no client', 1, true), why)
+    run(env, w, 2000)
+    check('trade: no keys sent', #w.keys_pressed() == 0)
+    local ok2 = env.request_trade(true)
+    check('trade: a typed command is permission', ok2)
+end
+
+-- ---------------------------------------------------------------- --
+-- The liaison meeting: spoken lines, topic steps, then the requests screen.
+do
+    local w, env = fresh()
+    env.set_screens_enabled(true)
+    local meeting = {vtype = 'viewscreen_meetingst', parent = w.top()}
+    w.push(meeting)
+    local spoken = {vtype = 'viewscreen_textviewerst'}
+    w.push(spoken)
+    w.on_key = function(_, key) if key == 'SELECT' then w.pop() end end
+    run(env, w, 8000)
+    check('liaison: spoken lines close with Enter', has(w.keys_pressed(), 'SELECT'))
+    check('liaison: not Escape, which can end the meeting',
+          not has(w.keys_pressed(), 'LEAVESCREEN'))
+end
+
+do
+    -- The topic screen never changes type; its text does. Six steps must not trip
+    -- a ladder that ends in LEAVESCREEN.
+    local w, env = fresh()
+    env.set_screens_enabled(true)
+    local n = 0
+    local topic = {vtype = 'viewscreen_topicmeetingst', text = stub.vector{{value = 'one'}}}
+    w.push(topic)
+    w.on_key = function(_, key)
+        if key == 'OPTION1' then
+            n = n + 1
+            topic.text = stub.vector{{value = 'step ' .. n}}
+            if n >= 6 then w.pop() end
+        end
+    end
+    run(env, w, 40000)
+    check('liaison: every topic step advances with "a"', n >= 6, n)
+    check('liaison: never escaped out of a topic',
+          not has(w.keys_pressed(), 'LEAVESCREEN'))
+    check('liaison: the topics are finished', w.top().vtype == 'viewscreen_dwarfmodest', w.top().vtype)
+end
+
+do
+    -- What the fort asks for next year goes in before the screen closes.
+    local w, env = fresh()
+    env.set_screens_enabled(true)
+    local filled
+    w.scripts = {antfarm_trade = {fill_import_requests = function(m)
+        filled = m
+        return {'IRON'}
+    end}}
+    local meeting = {id = 'the meeting'}
+    w.push({vtype = 'viewscreen_topicmeeting_takerequestsst', meeting = meeting})
+    run(env, w, 8000)
+    check('liaison: import requests are filled', filled == meeting)
+    check('liaison: and the screen closed afterwards', w.top().vtype == 'viewscreen_dwarfmodest', w.top().vtype)
+end
+
 -- ---------------------------------------------------------------- --
 -- Military screen: create a squad, as mapped on a live fort.
 -- squads.list holds nil for a leader position with no squad yet, so it is a

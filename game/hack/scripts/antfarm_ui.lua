@@ -179,12 +179,55 @@ end
 
 -- df-ai's table, key for key (pause.cpp AI::statechanged). Ordered: the first
 -- matching type wins. `keys` is the escalation ladder for that screen.
+--
+-- The liaison meeting, mapped key by key on a live 0.47 fort (2026-11-01):
+--   textviewer over viewscreen_meetingst  spoken lines   -> SELECT (Enter);
+--                                         OPTION1 does nothing there
+--   topicmeetingst                        each topic's text -> OPTION1 ("a"),
+--                                         once per step; the screen TYPE never
+--                                         changes, so progress is read from its
+--                                         text and resets the escalation ladder
+--   topicmeeting_takerequestsst           what we ask them to bring next year:
+--                                         fill it (antfarm_trade), then LEAVESCREEN
+--   tradeagreementst                      prices they pay us -> LEAVESCREEN
+--   requestagreementst                    what they want to buy -> LEAVESCREEN
+-- Escape on the dialogue risks ending the meeting early, which the
+-- mountainhome counts against you (AGENTS.md 6.11).
+
+local function meeting_parent(scr)
+    local ok, hit = pcall(function()
+        return scr.parent and df.viewscreen_meetingst and df.viewscreen_meetingst:is_instance(scr.parent)
+    end)
+    return ok and hit or false
+end
+
+local function topic_text(scr)
+    local parts = {}
+    pcall(function()
+        for i = 0, #scr.text - 1 do table.insert(parts, tostring(scr.text[i].value)) end
+    end)
+    return table.concat(parts, '|')
+end
+
+local function fill_requests(scr)
+    local ok, trade = pcall(reqscript, 'antfarm_trade')
+    if not ok or not trade or not trade.fill_import_requests then return end
+    local okf, asked = pcall(trade.fill_import_requests, scr.meeting)
+    if okf and asked and #asked > 0 then
+        note('liaison', 'asked for next year: ' .. table.concat(asked, ', ') .. ' bars')
+    end
+end
+
 local HANDLERS = {
-    {type = 'viewscreen_topicmeetingst',
-     keys = {'OPTION1', 'OPTION1', 'LEAVESCREEN'},
+    {type = 'viewscreen_textviewerst', match = meeting_parent,
+     keys = {'SELECT', 'SELECT', 'SELECT'}, why = 'meeting dialogue'},
+    {type = 'viewscreen_topicmeetingst', progress = topic_text,
+     keys = {'OPTION1', 'OPTION1', 'OPTION1', 'LEAVESCREEN'},
      why = 'diplomat meeting'},
-    {type = 'viewscreen_topicmeeting_takerequestsst',
+    {type = 'viewscreen_topicmeeting_takerequestsst', before = fill_requests,
      keys = {'LEAVESCREEN'}, why = 'diplomat requests'},
+    {type = 'viewscreen_tradeagreementst',
+     keys = {'LEAVESCREEN'}, why = 'trade agreement prices'},
     {type = 'viewscreen_topicmeeting_fill_land_holder_positionsst',
      keys = {'LEAVESCREEN'}, why = 'land holder positions'},
     {type = 'viewscreen_requestagreementst',
@@ -265,7 +308,7 @@ end
 
 local function handler_for(scr)
     for _, h in ipairs(HANDLERS) do
-        if is_a(h.type, scr) then return h end
+        if is_a(h.type, scr) and (not h.match or h.match(scr)) then return h end
     end
     return nil
 end
@@ -647,8 +690,23 @@ local function handle_screen(now)
     if now - antfarm_ui.focus_since < grace then return nil end
     if now - antfarm_ui.last_action < RETRY_MS then return nil end
 
+    -- A screen that advances without changing type (the liaison's topics):
+    -- each visible step is progress, not a failed dismissal.
+    if handler and handler.progress then
+        local sig = handler.progress(scr)
+        if sig ~= antfarm_ui.progress_sig then
+            antfarm_ui.progress_sig = sig
+            antfarm_ui.attempts = 0
+        end
+    end
+
     antfarm_ui.last_action = now
     antfarm_ui.attempts = antfarm_ui.attempts + 1
+
+    if handler and handler.before and antfarm_ui.before_done ~= ident .. tostring(scr) then
+        antfarm_ui.before_done = ident .. tostring(scr)
+        pcall(handler.before, scr)
+    end
 
     if antfarm_ui.attempts > MAX_ATTEMPTS then
         antfarm_ui.gave_up[ident] = now
@@ -748,11 +806,11 @@ function Driver:key(k)
     self:delay(1)
 end
 
-function start_driver(name, body)
+function start_driver(name, body, budget)
     if antfarm_ui.driver then return false end
     if wall_ms() < (antfarm_ui.driver_retry_at or 0) then return false end
     antfarm_ui.driver_name = name
-    antfarm_ui.driver_budget = DRIVER_BUDGET
+    antfarm_ui.driver_budget = budget or DRIVER_BUDGET
     antfarm_ui.driver = coroutine.create(function()
         body(setmetatable({}, Driver))
     end)
@@ -964,6 +1022,173 @@ function request_squad(operator)
 end
 
 -- ---------------------------------------------------------------- --
+-- trade: request the broker, bring exports, trade                  --
+-- ---------------------------------------------------------------- --
+-- Mapped on a live 0.47 fort (region_smoke, 2026-11-01), all from the depot's
+-- own query menu:
+--
+--   dwarfmode Default --D_BUILDJOB--> mode QueryBuilding; with the cursor on
+--     the depot DF selects it (focus dwarfmode/QueryBuilding/Some/TradeDepot)
+--   --BUILDJOB_DEPOT_REQUEST_TRADER--> a TradeAtDepot job on the depot. The
+--     depot's trade_flags.trader_requested bit alone creates NO job.
+--   --BUILDJOB_DEPOT_BRING--> viewscreen_layer_assigntradest; marking items
+--     AddPending and leaving creates one BringItemToDepot job each
+--   --BUILDJOB_DEPOT_TRADE--> viewscreen_tradegoodsst once the broker is at
+--     the depot; selections + TRADE_TRADE; LEAVESCREEN returns to the query
+--   LEAVESCREEN (only while in QueryBuilding) -> Default
+--
+-- The game clock does not run while the depot's query menu is open, so the
+-- driver never lingers there. Success is read from item ownership, never
+-- assumed from the keys sent. Never LEAVESCREEN from Default: that is the
+-- abandon-fortress menu.
+
+local function mode_is(name)
+    local ok, hit = pcall(function()
+        return df.global.ui.main.mode == df.ui_sidebar_mode[name]
+    end)
+    return ok and hit or false
+end
+
+local function depot_job(depot, job_name)
+    local ok, hit = pcall(function()
+        for i = 0, #depot.jobs - 1 do
+            if depot.jobs[i].job_type == df.job_type[job_name] then return true end
+        end
+        return false
+    end)
+    return ok and hit or false
+end
+
+local function leave_query(d)
+    if mode_is('QueryBuilding') and is_a('viewscreen_dwarfmodest', select(1, current_screen())) then
+        d:key('LEAVESCREEN')
+    end
+    wait_for(function() return mode_is('Default') end)
+end
+
+local function select_depot(d, depot)
+    d:key('D_BUILDJOB')
+    if not wait_for(function() return mode_is('QueryBuilding') end) then return false end
+    df.global.cursor.x, df.global.cursor.y, df.global.cursor.z = depot.centerx, depot.centery, depot.z
+    d:key('CURSOR_UP')
+    d:key('CURSOR_DOWN')
+    return wait_for(function()
+        local sel = df.global.world.selected_building
+        return sel ~= nil and sel.id == depot.id
+    end)
+end
+
+local function trade_steps(d)
+    local okm, trade = pcall(reqscript, 'antfarm_trade')
+    if not okm or not trade then return end
+    if not is_dwarfmode() or not mode_is('Default') then return end
+    local depot = trade.find_depot()
+    local caravan = trade.caravan_at_depot()
+    if not depot or not caravan then return end
+    local v = trade.visit(caravan)
+
+    d:expect('viewscreen_dwarfmodest')
+    if not select_depot(d, depot) then
+        trade.record('trade: could not select the depot in its query menu')
+        return leave_query(d)
+    end
+
+    if not depot_job(depot, 'TradeAtDepot') then
+        d:key('BUILDJOB_DEPOT_REQUEST_TRADER')
+        if wait_for(function() return depot_job(depot, 'TradeAtDepot') end) then
+            trade.record('trade: broker requested at the depot')
+        else
+            trade.record('trade: requesting the broker created no job')
+        end
+    end
+
+    -- Every attempt, not once: goods finished during the visit should go too,
+    -- and a first pass that found nothing must not close the door. mark_exports
+    -- only touches lines not already pending, so repeats do not double-send.
+    d:key('BUILDJOB_DEPOT_BRING')
+    if wait_for(function() return is_a('viewscreen_layer_assigntradest', select(1, current_screen())) end) then
+        local view = select(1, current_screen())
+        local n, value = trade.mark_exports(view)
+        d:key('LEAVESCREEN')
+        wait_for(function() return is_dwarfmode() end)
+        if n > 0 then
+            v.brought = true
+            trade.record(('trade: %d finished goods (value %d) sent to the depot'):format(n, value))
+        elseif not v.brought and not v.nothing_noted then
+            v.nothing_noted = true
+            trade.record('trade: no finished goods to export -- crafts are on order')
+        end
+    else
+        trade.record('trade: the move-goods screen did not open')
+    end
+
+    d:key('BUILDJOB_DEPOT_TRADE')
+    if wait_for(function() return is_a('viewscreen_tradegoodsst', select(1, current_screen())) end, 10) then
+        local view = select(1, current_screen())
+        local wants = trade.trade_wants()
+        local plan, why = trade.plan_trade(view, wants)
+        if plan then
+            for _, b in ipairs(plan.buy) do view.trader_selected[b.i] = 1 end
+            for _, o in ipairs(plan.sell) do view.broker_selected[o.i] = 1 end
+            d:key('TRADE_TRADE')
+            if wait_for(function() return trade.trade_went_through(plan) end) then
+                v.traded = true
+                antfarm_ui.stats.trades = (antfarm_ui.stats.trades or 0) + 1
+                local names = {}
+                for _, b in ipairs(plan.buy) do table.insert(names, b.want.label) end
+                trade.record(('trade: bought %s (value %d) for goods worth %d')
+                    :format(table.concat(names, ', '), plan.cost, plan.paid))
+            else
+                trade.record('trade: the merchants did not accept the offer')
+            end
+        else
+            trade.record('trade: ' .. tostring(why))
+        end
+        if is_a('viewscreen_tradegoodsst', select(1, current_screen())) then d:key('LEAVESCREEN') end
+        wait_for(function() return is_dwarfmode() end)
+    end
+    -- No trade screen yet means the broker has not reached the depot; the
+    -- next attempt (antfarm_trade's tick) tries again.
+    leave_query(d)
+end
+
+-- Whatever happened, leave the UI as found: no trade or move-goods screen
+-- open, and never the depot's query menu (the game clock stops there, and
+-- the watchdog does not touch the map screen).
+local function trade_cleanup(d)
+    for _ = 1, 3 do
+        local scr = select(1, current_screen())
+        if is_a('viewscreen_tradegoodsst', scr) or is_a('viewscreen_tradelistst', scr)
+                or is_a('viewscreen_layer_assigntradest', scr) then
+            d:key('LEAVESCREEN')
+        else
+            break
+        end
+    end
+    leave_query(d)
+end
+
+local function trade_body(d)
+    local ok, err = pcall(trade_steps, d)
+    trade_cleanup(d)
+    if not ok then error(err, 0) end
+end
+
+-- Enough resumes for every wait in the sequence plus cleanup.
+local TRADE_DRIVER_BUDGET = 200
+
+function request_trade(operator)
+    if not antfarm_ui.screens_enabled and not operator then
+        return false, 'no client is driving the fort, so the UI is left alone'
+    end
+    if not is_dwarfmode() then return false, 'not on the fort map' end
+    if start_driver('trade', trade_body, TRADE_DRIVER_BUDGET) then
+        return true, 'the trade driver is working the depot'
+    end
+    return false, 'another UI driver is running or cooling down'
+end
+
+-- ---------------------------------------------------------------- --
 -- entry points                                                     --
 -- ---------------------------------------------------------------- --
 
@@ -1048,6 +1273,7 @@ function report()
         screens_dismissed = antfarm_ui.stats.screens,
         petitions_answered = antfarm_ui.stats.petitions,
         squads_created = antfarm_ui.stats.squads or 0,
+        trades = antfarm_ui.stats.trades or 0,
         unpauses = antfarm_ui.stats.unpauses,
         failures = antfarm_ui.stats.failures,
         log = entries,
@@ -1138,6 +1364,9 @@ elseif verb == 'unpause' then
 elseif verb == 'petitions' then
     print(('antfarm_ui: %d pending petition(s)'):format(petition_count()))
     if not check_petitions() then print('  nothing to do (or a driver is already running)') end
+elseif verb == 'trade' then
+    local ok, why = request_trade(true)
+    print('antfarm_ui: ' .. tostring(why))
 elseif verb == 'squad' then
     -- Operator-initiated: a typed command is permission for this one driver run.
     local ok, why = request_squad(true)
@@ -1149,5 +1378,5 @@ elseif verb == 'off' then
     set_screens_enabled(false)
     print('antfarm_ui: viewscreen dismissal off')
 else
-    print('usage: antfarm_ui [status|screen|dismiss|unpause|petitions|squad|on|off]')
+    print('usage: antfarm_ui [status|screen|dismiss|unpause|petitions|squad|trade|on|off]')
 end

@@ -159,8 +159,15 @@ gen_world() {
     preset="${ANTFARM_WORLDGEN_PRESET:-TOLKIEN_EPIC_MEDIUM}"
     echo "  -> no world on disk; generating region$region with preset $preset"
     echo "     (this takes a few minutes and prints a lot; it is not stuck)"
-    ( cd "$BASE_DIR/game" && ./df -gen "$region" RANDOM "$preset" ) \
-        >"$BASE_DIR/game/worldgen.log" 2>&1
+    # DF occasionally segfaults at the start of generation (seen 2026-11-02); the
+    # same command then succeeds, so try again before calling it a failure.
+    local attempt
+    for attempt in 1 2 3; do
+        ( cd "$BASE_DIR/game" && ./df -gen "$region" RANDOM "$preset" ) \
+            >"$BASE_DIR/game/worldgen.log" 2>&1
+        [ -d "$BASE_DIR/game/data/save/region$region" ] && break
+        echo "     worldgen attempt $attempt did not produce a world; retrying"
+    done
     local selection
     if ! selection=$(antfarm_resolve_save "$BASE_DIR/game/data/save") || [ -z "$selection" ]; then
         echo "     worldgen FAILED or save selection became ambiguous - see game/worldgen.log"

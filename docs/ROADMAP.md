@@ -132,6 +132,7 @@ finding-by-finding review of the earlier report.
 | **Post-job assignment gap** | PR #23 merged with passing CI; DFHack `workNow 2` pokes assignment when a dwarf finishes a job. It reduces post-job idle delay but does not create jobs or bypass labor eligibility |
 | **A still with no brew orders** | Live `region1` sat at build step 4 with a finished still and `orders_done` empty: `library/basic` waits for step 5, which waits on surface digging. `antfarm_sustenance` now imports it once a still is finished, via `antfarm_blueprint.import_order_library()`, which also adopts brew orders already in the fort instead of duplicating 46 orders after a re-anchor. **Verified live:** imported on load, recorded in the plan, not re-imported at step 6; all 53 orders validated about nine in-game days after load |
 | **The idle dwarves** | `prioritize -j` and `autolabor status` on the live fort: the only unclaimed work was 59 dig/stair jobs, so four dwarves had nothing they *could* do. Once step 5 placed workshops and stockpiles, every dwarf had a job |
+| **The idle opening** | A fresh embark sampled every 10s: five of seven dwarves idle for 4 real minutes (about 20 game days), until `/surface2` placed workshops and stockpiles. Every step was held 60s behind the last, and Play Now brought 2 picks and 12 drinks. Ungated steps now run back to back and `antfarm_autostart` loads the `GORNYS EASY PEASY START` preset. **Verified live:** step 7 about 40s after embark, at most 3 of 7 idle |
 | **A pick on the floor** | `tune_labour()` set each tool labour's minimum to 1, below DFHack's MINE default of 2; past the minimum autolabor only adds skilled dwarves or acts when 2+ are idle (`autolabor.cpp`, 0.47.05-r8). 110 dig jobs had one miner. Minimum now equals the tool count. **Verified live:** both picks held, two dig jobs worked |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
@@ -202,23 +203,22 @@ manual.
 
 ## 3. Not implemented
 
-### 3.1. Trade-screen driver — the biggest functional gap
+### 3.1. Trade-screen driver — implemented and verified live
 
-The fort can now *reach* a caravan (there is a depot) and knows *what* it wants
-and *who* is at the depot. It still cannot actually trade: selecting goods is
-multi-step viewscreen UI.
+`antfarm_trade` and `antfarm_ui`'s trade driver request the broker, send finished
+goods to the depot and buy from a shopping list, while a client drives the fort.
+**Verified live 2026-11-02** on `region_smoke` with a forced caravan: 40 goods
+hauled, then 3 picks and 4 metal bars bought for goods worth 1800, confirmed by
+the purchased items losing their `trader` flag. Test goods were conjured, because
+that fort had made none.
 
-This matters more here than on a normal embark — §1 established there is no iron
-ore on this map, so trade is the only route to iron and steel, forever.
+Exports are finished goods only, so containers and wood cannot go to elves
+(AGENTS.md 6.27); that rule has tests but no elven caravan has tested it live.
 
-It must go through `start_driver()` with a `d:expect()` on every screen
-transition and `tests/df_stub.lua` coverage asserting the exact key sequence, the
-same way the petition driver works. Blind keystrokes on the trade screen are how
-you gift a caravan your entire stockpile.
-
-Related and also missing: the **elven wood embargo enforcement**. Race detection
-exists and exports are pinned to stone, but nothing prevents a wooden bin being
-offered, which is what actually triggers the war (AGENTS.md 6.27).
+Not re-verified: the liaison meeting handlers. Their keys were mapped on a live
+fort on 2026-11-01 and are covered by stub tests, but `force Diplomat` produced no
+new meeting on 2026-11-02, so the fill-in of import requests has not been watched
+end to end. Next autumn caravan on a fort with a client attached will show it.
 
 ### 3.2. Strange moods — implemented and verified live
 
@@ -361,7 +361,8 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
    for bar demands, cloth, logs.
 3. ~~**Military-screen driver**~~ — done 2026-11-01 (§2). Left: picking a
    uniform instead of the first entry.
-4. **Trade-screen driver** — the only path to iron on this map.
+4. ~~**Trade-screen driver**~~ — done 2026-11-02 (§3.1). Left: watch one real
+   liaison meeting through.
 5. **Locations**, then flip the petition handler from decline to accept.
 6. **Justice**, reusing the orders module's impossible-vs-not-yet logic.
 7. **Targeted mining**, then the arbiter.

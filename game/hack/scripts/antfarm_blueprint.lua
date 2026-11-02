@@ -1173,7 +1173,12 @@ end
 -- auto mode                                                        --
 -- ---------------------------------------------------------------- --
 
-local MIN_STEP_INTERVAL = 60   -- seconds; gives jobs a chance to be picked up
+-- Seconds to let jobs get picked up before a 'build' step, or between retries of
+-- a step that did nothing. Not applied to the rest: a 'none' step waits on nothing
+-- and a 'dig' gate reads designations, which exist the moment they are placed.
+-- Pacing every step cost a live embark four real minutes (about twenty game days)
+-- before /surface2 gave anyone but the miners a job, with five of seven idle.
+local MIN_STEP_INTERVAL = 60
 local AUTO_POLL_SEC = 10
 local AUTO_FRAMES = 30         -- see antfarm_server: 'frames' is the only unit
                                -- that keeps running while the game is paused
@@ -1228,8 +1233,9 @@ local function auto_tick()
     if now - auto_last >= AUTO_POLL_SEC then
         auto_last = now
         if dfhack.isMapLoaded() and plan.anchor and plan.step <= #PLAN then
-            if os.time() - (plan.last_run or 0) >= MIN_STEP_INTERVAL then
-                local step = PLAN[plan.step]
+            local step = PLAN[plan.step]
+            local paced = step.gate == 'build' or (plan.attempts[tostring(plan.step)] or 0) > 0
+            if not paced or os.time() - (plan.last_run or 0) >= MIN_STEP_INTERVAL then
                 -- Guarded: an error in here used to propagate out of auto_tick
                 -- and break the timeout chain, so auto mode stopped for the
                 -- rest of the session without saying anything.
@@ -1244,7 +1250,9 @@ local function auto_tick()
                     plan.gate_pending = -1
                     plan.stalled = false
                     plan.stall_reason = nil
-                    apply_step(plan.step, false)
+                    -- Moved on: look at the next step on the next frame poll
+                    -- rather than the next AUTO_POLL_SEC.
+                    if apply_step(plan.step, false) then auto_last = 0 end
                 else
                     track_stall(plan, why, pending)
                 end
