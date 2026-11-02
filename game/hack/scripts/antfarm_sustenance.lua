@@ -44,10 +44,12 @@ local DRINK_PER_CITIZEN = 2
 
 -- Tool-limited labours: assigning more dwarves than there are tools just parks
 -- them, and assigning fewer leaves a tool on the floor. The item subtype that
--- each one needs.
+-- each one needs. `share` caps the labour at a fraction of the fort, so a small
+-- fort with plenty of picks still has hands left to build and haul: miners do
+-- not haul.
 local TOOL_LABOURS = {
-    {labor = 'MINE',    tool = 'ITEM_WEAPON_PICK',       floor = 1},
-    {labor = 'CUTWOOD', tool = 'ITEM_WEAPON_AXE_BATTLE', floor = 1},
+    {labor = 'MINE',    tool = 'ITEM_WEAPON_PICK',       floor = 1, share = 0.6},
+    {labor = 'CUTWOOD', tool = 'ITEM_WEAPON_AXE_BATTLE', floor = 1, share = 0.3},
 }
 
 local BUILDABLE = {
@@ -233,6 +235,26 @@ local function clear_3x3(x0, y0, z)
     return true
 end
 
+-- Something a dwarf can build with right now. A workshop placed without any is
+-- cancelled ("Needs building material non-economic item") and the building
+-- quietly disappears, which is what happened on every fresh embark: the wagon's
+-- logs are stuck inside the wagon until it is taken apart, so the first try found
+-- nothing and the next was five minutes away. Public: trade checks it for the depot.
+function building_material_on_hand()
+    for _, key in ipairs({'WOOD', 'BOULDER', 'BLOCKS'}) do
+        local items = df.global.world.items.other[key]
+        if items then
+            for i = 0, #items - 1 do
+                local f = items[i].flags
+                if not (f.in_building or f.forbid or f.in_job or f.garbage_collect or f.trader) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 -- Place one 3x3 building (workshop or furnace) on the nearest clear surface
 -- ground around the fort's anchor, spiralling outwards. Public: antfarm_mood
 -- uses it when a moody dwarf needs a workshop the fort has not got.
@@ -265,6 +287,7 @@ end
 function ensure_workshops()
     local ax = anchor()
     if not ax then return {}, 'no anchor and no citizens' end
+    if not building_material_on_hand() then return {}, 'nothing to build with yet' end
     local placed = {}
     for _, want in ipairs(WANTED_SHOPS) do
         if not have_shop(want.subtype)
@@ -346,9 +369,11 @@ end
 
 function tune_labour()
     local notes = {}
+    local pop = #citizens()
     for _, t in ipairs(TOOL_LABOURS) do
         local n = count_tool(t.tool)
         local cap = math.max(t.floor, n)
+        if pop > 0 then cap = math.max(t.floor, math.min(cap, math.floor(pop * t.share + 0.5))) end
         local ok, reason = set_autolabor(t.labor, cap, cap)
         if ok then
             table.insert(notes, ('%s capped at %d (%d tool%s on hand)')

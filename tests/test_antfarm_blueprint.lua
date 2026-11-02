@@ -189,6 +189,45 @@ local function anchored(w, env)
     w.commands = {}
 end
 
+-- The opening must not be paced. A live embark spent four real minutes getting to
+-- /surface2 with five of seven dwarves idle, because every step waited 60 seconds
+-- behind the last whether or not it had anything to wait for.
+local function drive_auto(w, env, seconds)
+    local pending
+    w.dfhack.timeout = function(_, _, fn) pending = fn; return 1 end
+    env.set_auto(true)
+    for _ = 1, seconds * 2 do
+        w.advance(500)
+        local fn = pending
+        pending = nil
+        if fn then fn() end
+    end
+end
+
+do
+    local w, env = fresh()
+    anchored(w, env)
+    drive_auto(w, env, 5)
+    check('ungated opening steps run back to back, no waiting between them',
+          env.progress().step >= 5, env.progress().step)
+end
+
+do
+    -- ...but a step that did nothing keeps its pace, or three retries burn off in
+    -- a second and it is written off before the level it needs is dug.
+    local w, env = fresh()
+    anchored(w, env)
+    w.command_output = setmetatable({}, {__index = function()
+        return 'run of dreamfort.csv successfully completed\n'
+            .. '  Tiles designated for digging: 0\n'
+    end})
+    local step_before = env.progress().step
+    drive_auto(w, env, 30)
+    check('a step that did nothing is not retried at full speed',
+          env.progress().step == step_before, env.progress().step)
+    check('and is not written off', #env.progress().warnings == 0)
+end
+
 do
     local w, env = fresh()
     anchored(w, env)

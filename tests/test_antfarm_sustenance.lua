@@ -46,6 +46,41 @@ end
 
 print('antfarm_sustenance')
 
+-- A small fort keeps hands free: miners do not haul, and the labour must not take
+-- everyone just because the picks exist.
+do
+    local w, env, calls = fresh(0)
+    for _ = 1, 7 do add_tool(w, 'ITEM_WEAPON_PICK') end
+    local citizens = {}
+    for i = 1, 7 do table.insert(citizens, {id = i}) end
+    w.df.global.world.units.active = citizens
+    w.dfhack.units = w.dfhack.units or {}
+    w.dfhack.units.isCitizen = function() return true end
+    env.tune_labour()
+    local mine
+    for _, call in ipairs(calls) do if call[2] == 'MINE' then mine = call[3] end end
+    check('seven picks on seven dwarves does not mean seven miners', mine == '4', mine)
+end
+
+-- A workshop placed with nothing to build it from is cancelled and vanishes.
+do
+    local w, env = fresh(0)
+    local log = {flags = {in_building = true}}
+    w.df.global.world.items.other = {WOOD = stub.vector{log}}
+    check('logs inside the wagon are not building material', not env.building_material_on_hand())
+    log.flags.in_building = false
+    check('logs on the ground are', env.building_material_on_hand())
+    log.flags.forbid = true
+    check('forbidden logs are not', not env.building_material_on_hand())
+
+    w.dfhack.buildings = {constructBuilding = function() error('must not be placed') end}
+    w.dfhack.units = w.dfhack.units or {}
+    w.dfhack.units.isCitizen = function() return true end
+    w.df.global.world.units.active = {{pos = {x = 10, y = 10, z = 5}}}
+    local placed, why = env.ensure_workshops()
+    check('nothing is placed without material', #placed == 0 and why == 'nothing to build with yet', why)
+end
+
 -- A successful pcall is not enough: only CR_OK confirms DFHack accepted the
 -- autolabor change. Verify argument order and all four target labor commands.
 do

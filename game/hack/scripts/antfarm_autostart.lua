@@ -18,7 +18,7 @@
 --   titlest subpage 2   submenu Dwarf Fortress / Adventurer / Legends
 --   update_regionst     DF advances world history; can take minutes
 --   choose_start_sitest antfarm_embark ranks sites and presses `e`
---   setupdwarfgamest    choice_types[n] == PlayNow
+--   setupdwarfgamest    our embark profile, then SETUP_EMBARK; see drive_setup
 --   textviewerst        the arrival text -- dismissed on the first poll
 --   dwarfmodest         playing
 --
@@ -157,22 +157,79 @@ local function drive_site(scr)
     end
 end
 
--- "Prepare for the Journey": take Play Now.
+-- "Prepare for the Journey": load a community embark preset from
+-- data/init/embark_profiles.txt, falling back on Play Now. Play Now brings 2 picks
+-- and 12 drinks and leaves the embark points unspent, the slowest possible start
+-- for a fort nobody is minding. Of the presets in that file this one has the most
+-- picks of those that also bring a brewer, grower, cook, carpenter, mason and an
+-- anvil; on a 1504-point world it leaves 13 points over.
+--
+-- Mapped on a live 0.47 setup screen (2026-11-02):
+--   choices[i].name          profile title, where choice_types[i] == Profile
+--   SELECT on a Profile      loads it; show_play_now drops to 0 and
+--                            points_remaining is what is left of the budget
+--   in_problems = 1          lists what this civ cannot supply (`problems`) and
+--                            drops those items; LEAVESCREEN acknowledges it
+--   SETUP_EMBARK             embark; with points left over, embark_prompt = 1
+--   SELECT on that prompt    confirms it (POST_PREPARE_EMBARK_CONFIRMATION)
+PROFILE_TITLE = 'GORNYS EASY PEASY START'
+
+local function find_profile(scr)
+    local Profile = df.viewscreen_setupdwarfgamest.T_choice_types.Profile
+    for i = 0, #scr.choice_types - 1 do
+        if scr.choice_types[i] == Profile then
+            local ok, name = pcall(function() return scr.choices[i].name end)
+            if ok and name == PROFILE_TITLE then return i end
+        end
+    end
+    return nil
+end
+
 local function drive_setup(scr)
     local ok = pcall(function()
         if scr.mode ~= 0 then return end        -- inside a sub-editor; leave it
-        local PlayNow = df.viewscreen_setupdwarfgamest.T_choice_types.PlayNow
-        for i = 0, #scr.choice_types - 1 do
-            if scr.choice_types[i] == PlayNow then
+
+        if scr.in_problems ~= 0 then
+            gui.simulateInput(scr, 'LEAVESCREEN')
+            note(('this civ cannot supply %d item(s) in the profile'):format(#scr.problems))
+            return
+        end
+
+        -- The "points remain" confirmation sits on this same screen.
+        if scr.embark_prompt ~= 0 then
+            gui.simulateInput(scr, 'SELECT')
+            note('confirmed the embark')
+            return
+        end
+
+        if scr.show_play_now ~= 0 then
+            local i = find_profile(scr)
+            if i then
                 scr.choice = i
                 gui.simulateInput(scr, 'SELECT')
-                note('Play Now')
+                note('loaded the ' .. PROFILE_TITLE .. ' embark profile')
                 return
             end
+            local PlayNow = df.viewscreen_setupdwarfgamest.T_choice_types.PlayNow
+            for j = 0, #scr.choice_types - 1 do
+                if scr.choice_types[j] == PlayNow then
+                    scr.choice = j
+                    gui.simulateInput(scr, 'SELECT')
+                    note('no ' .. PROFILE_TITLE .. ' profile; Play Now')
+                    return
+                end
+            end
         end
-        -- No Play Now offered (a reclaim, say): embark with whatever is loaded.
+
+        -- A profile is loaded, or nothing was offered (a reclaim). DF will not
+        -- embark over budget, and pressing the key forever would hide why.
+        if scr.points_remaining < 0 then
+            antfarm_autostart.failed = ('the %s profile is %d points over this world\'s embark budget'):format(
+                PROFILE_TITLE, -scr.points_remaining)
+            return
+        end
         gui.simulateInput(scr, 'SETUP_EMBARK')
-        note('no Play Now offered; embarking with the default loadout')
+        note('embarking')
     end)
     if not ok then note('could not read the embark profile list') end
 end
