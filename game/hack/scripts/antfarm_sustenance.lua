@@ -259,6 +259,28 @@ function building_material_on_hand()
     return false
 end
 
+-- While the guided build is still laying out the surface, stay off it. /surface2
+-- places the still, kitchen and stockpiles within a minute or so of embarking, and
+-- a workshop dropped here first landed on the two surface stair tiles: the entrance
+-- was never dug, which left miners and picks below and food and drink above, and a
+-- dwarf starved in sight of the stockpile. Public: trade waits on this for its depot.
+function opening_in_progress()
+    local ok, bp = pcall(reqscript, 'antfarm_blueprint')
+    if not ok or not bp or not bp.plan_summary then return false end
+    local okp, s = pcall(bp.plan_summary)
+    return okp and s and s.anchor ~= nil and (s.step or 99) <= 5 or false
+end
+
+-- The central stairs and the ground around them are never free for building.
+local STAIR_MARGIN = 3
+
+function clear_of_stairs(x0, y0, w, h)
+    local ax, ay = anchor()
+    if not ax then return true end
+    return x0 + w - 1 < ax - STAIR_MARGIN or x0 > ax + STAIR_MARGIN
+        or y0 + h - 1 < ay - STAIR_MARGIN or y0 > ay + STAIR_MARGIN
+end
+
 -- Place one 3x3 building (workshop or furnace) on the nearest clear surface
 -- ground around the fort's anchor, spiralling outwards. Public: antfarm_mood
 -- uses it when a moody dwarf needs a workshop the fort has not got.
@@ -270,7 +292,7 @@ function place_building(btype, kind)
             for dy = -r, r do
                 if math.max(math.abs(dx), math.abs(dy)) == r then
                     local x0, y0 = ax + dx, ay + dy
-                    if clear_3x3(x0, y0, z) then
+                    if clear_of_stairs(x0, y0, 3, 3) and clear_3x3(x0, y0, z) then
                         local ok, b = pcall(dfhack.buildings.constructBuilding, {
                             type = btype,
                             subtype = kind,
@@ -291,6 +313,7 @@ end
 function ensure_workshops()
     local ax = anchor()
     if not ax then return {}, 'no anchor and no citizens' end
+    if opening_in_progress() then return {}, 'the guided build is placing these' end
     if not building_material_on_hand() then return {}, 'nothing to build with yet' end
     local placed = {}
     for _, want in ipairs(WANTED_SHOPS) do

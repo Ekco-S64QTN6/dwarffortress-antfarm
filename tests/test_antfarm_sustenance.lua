@@ -62,6 +62,28 @@ do
     check('seven picks on seven dwarves does not mean seven miners', mine == '4', mine)
 end
 
+-- The surface stairs: workshops placed before them cut the fort in half.
+do
+    local w, env = fresh(0)
+    w.scripts = {antfarm_blueprint = {plan_summary = function()
+        return {anchor = {x = 100, y = 100}, levels = {surface = 72}, step = 3}
+    end}}
+    check('the opening is recognised', env.opening_in_progress() == true)
+    w.df.global.world.items.other = {WOOD = stub.vector{{flags = {}}}}
+    w.dfhack.buildings = {constructBuilding = function() error('must not be placed') end}
+    local placed, why = env.ensure_workshops()
+    check('no workshops while the guided build lays out the surface',
+          #placed == 0 and why:find('guided build', 1, true), why)
+    check('a 3x3 touching the stairs is refused', not env.clear_of_stairs(98, 98, 3, 3))
+    check('so is one just inside the margin', not env.clear_of_stairs(103, 100, 3, 3))
+    check('clear of it is fine', env.clear_of_stairs(104, 100, 3, 3))
+
+    w.scripts = {antfarm_blueprint = {plan_summary = function()
+        return {anchor = {x = 100, y = 100}, levels = {surface = 72}, step = 6}
+    end}}
+    check('once /surface2 has run the backstop is live again', env.opening_in_progress() == false)
+end
+
 -- A workshop placed with nothing to build it from is cancelled and vanishes.
 do
     local w, env = fresh(0)

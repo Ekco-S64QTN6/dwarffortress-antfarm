@@ -96,7 +96,9 @@ function find_depot_site()
     for dx = -SEARCH_RADIUS, SEARCH_RADIUS do
         for dy = -SEARCH_RADIUS, SEARCH_RADIUS do
             local x, y = anchor.x + dx, anchor.y + dy
-            if site_is_clear(x, y, z) then
+            local near_stairs = x + DEPOT_SIZE - 1 >= anchor.x - 3 and x <= anchor.x + 3
+                and y + DEPOT_SIZE - 1 >= anchor.y - 3 and y <= anchor.y + 3
+            if not near_stairs and site_is_clear(x, y, z) then
                 local d = dx * dx + dy * dy
                 if not best_d or d < best_d then
                     best_d, best = d, {x = x, y = y, z = z}
@@ -115,6 +117,9 @@ function ensure_depot()
     if find_depot() then return false, 'depot already exists' end
     -- Without materials DF cancels the job and the depot disappears.
     local oks, sust = pcall(reqscript, 'antfarm_sustenance')
+    if oks and sust and sust.opening_in_progress and sust.opening_in_progress() then
+        return false, 'the guided build is still laying out the surface'
+    end
     if oks and sust and sust.building_material_on_hand and not sust.building_material_on_hand() then
         return false, 'nothing to build with yet'
     end

@@ -268,6 +268,7 @@ function M.new()
     dfhack.printerr = function(s) table.insert(w.errors, s) end
     dfhack.onStateChange = {}
     dfhack.run_command = function(cmd) table.insert(w.commands, cmd); return 0 end
+    dfhack.buildings = {findAtTile = function() return nil end}
     dfhack.run_command_silent = function(cmd)
         table.insert(w.commands, cmd)
         return (w.command_output or {})[cmd] or '', w.command_status or 0
@@ -487,6 +488,7 @@ function M.load(world, path)
         error('unstubbed require: ' .. name)
     end
     env.reqscript = function(name) return world.scripts and world.scripts[name] end
+    env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
     env.print = function(...)
         local parts = {}
         for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))) end
