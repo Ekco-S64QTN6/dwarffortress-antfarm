@@ -189,6 +189,158 @@ local function anchored(w, env)
     w.commands = {}
 end
 
+-- Dreamfort's vents assume farming sits one level under the surface; ours is deeper.
+do
+    local w, env = fresh()
+    anchored(w, env)
+    local plan = {anchor = {x = 100, y = 101}, levels = {surface = 72, farming = 70}}
+    w.commands = {}
+    local tiles = env.extend_vents(plan)
+    local joined = table.concat(w.commands, '|')
+    check('vents repeat on the level between the surface and farming',
+          joined:find('/surface_channel --cursor 100,101,71', 1, true) ~= nil, joined)
+    check('they do not touch the farming level itself',
+          joined:find('100,101,70', 1, true) == nil, joined)
+    check('the tiles are counted', tiles > 0, tiles)
+    w.commands = {}
+    env.extend_vents(plan)
+    check('and it only happens once', #w.commands == 0, #w.commands)
+
+    local shallow = {anchor = {x = 1, y = 1}, levels = {surface = 72, farming = 71}}
+    w.commands = {}
+    env.extend_vents(shallow)
+    check('a farming level right under the surface needs nothing', #w.commands == 0, #w.commands)
+end
+
+-- Sealed designations: drop them only when nothing could ever reach them.
+do
+    local function sealed_world()
+        local w, env = fresh()
+        local z = 40
+        w.set_tile(50, 50, z, w.df.tiletype_material.SOIL, w.df.tiletype_shape.WALL)
+        w.designate(50, 50, z, w.df.tile_dig_designation.Default)
+        local plan = {levels = {surface = 42, farming = z}}
+        return w, env, plan, w.block_at(50, 50, z), z
+    end
+
+    local w, env, plan, block = sealed_world()
+    check('a level nobody has reached is left alone',
+          env.clear_sealed(plan, {'farming'}) == 0 and block.designation[2][2].dig ~= 0)
+
+    block.walkable[15][15] = 7
+    check('sealed tiles on a reached level are dropped',
+          env.clear_sealed(plan, {'farming'}) == 1 and block.designation[2][2].dig == 0)
+
+    w, env, plan, block = sealed_world()
+    block.walkable[15][15] = 7
+    block.walkable[3][3] = 7
+    check('a tile with a way in is kept: miners can still get to it',
+          env.clear_sealed(plan, {'farming'}) == 0 and block.designation[2][2].dig ~= 0)
+end
+
+-- Stockpile links cross one z-level in Dreamfort; ours cross the real depth.
+do
+    local w, env = fresh()
+    local csv = table.concat({
+        '#query label(other) start(1; 1)', 'keep,<&',
+        '#query label(farming_link) start(16; 18) hidden() set links', '',
+        ',,t{Down 6}{Left 10}<&,`,t{Up 2}{Right 11}<&',
+        '#query label(after) start(1; 1)', 'keep,<&', ''}, '\n')
+    local text = env.link_blueprint_text(csv, 'farming_link', 2)
+    check('the label line is kept, so quickfort can find it',
+          text:find('label(farming_link)', 1, true) ~= nil)
+    check('every link climbs the real depth',
+          text:find('t{Down 6}{Left 10}<<&', 1, true) and text:find('t{Up 2}{Right 11}<<&', 1, true), text)
+    check('other blueprints stay out of it', not text:find('keep', 1, true), text)
+    check('a missing label is not an empty file', env.link_blueprint_text(csv, 'nope', 2) == nil)
+end
+
+do
+    -- At depth 2 /farming2 runs section by section, without Dreamfort's own link.
+    local w, env = fresh()
+    anchored(w, env)
+    local plan = env.progress()
+    local levels = env.antfarm_plan.levels
+    levels.farming = levels.surface - 2
+    env.antfarm_plan.step = 7
+    w.commands = {}
+    check('the farming step advances', env.apply_step(7, true) == true)
+    local joined = table.concat(w.commands, '|')
+    check('its sections run one by one', joined:find('-n /farming_build', 1, true) ~= nil
+          and joined:find('-n /farming_query_stockpiles', 1, true) ~= nil, joined)
+    check('the meta blueprint with the one-level links does not',
+          joined:find('run library/dreamfort.csv -n /farming2', 1, true) == nil, joined)
+    check('orders still come from the meta blueprint',
+          joined:find('orders library/dreamfort.csv -n /farming2', 1, true) ~= nil, joined)
+end
+
+-- A step that keeps failing: bounded retries, and its orders imported only once.
+do
+    local w, env = fresh()
+    anchored(w, env)
+    local step_before = env.progress().step
+    env.antfarm_plan.step = 5
+    w.command_status = 1
+    w.commands = {}
+    check('first failure holds the step', env.apply_step(5, false) == false and env.progress().step == 5)
+    check('second failure holds it too', env.apply_step(5, false) == false and env.progress().step == 5)
+    check('the third moves on instead of blocking the fort for good',
+          env.apply_step(5, false) == true and env.progress().step == 6, env.progress().step)
+    local warned = table.concat(env.progress().warnings, ' | ')
+    check('and says so', warned:find('moving on', 1, true) ~= nil, warned)
+end
+
+do
+    local w, env = fresh()
+    anchored(w, env)
+    env.antfarm_plan.step = 5
+    w.commands = {}
+    local real = w.dfhack.run_command_silent
+    w.dfhack.run_command_silent = function(cmd)
+        table.insert(w.commands, cmd)
+        if cmd:find('quickfort run', 1, true) then return 'boom', 1 end
+        return QF_OK, 0
+    end
+    env.apply_step(5, false)
+    env.apply_step(5, false)
+    local orders = 0
+    for _, c in ipairs(w.commands) do if c:find('quickfort orders', 1, true) then orders = orders + 1 end end
+    check('a retry does not import the orders again', orders == 1, orders)
+    w.dfhack.run_command_silent = real
+end
+
+-- The fort's front door: surface stairs that went missing are put back.
+do
+    local function door_world()
+        local w, env = fresh()
+        local M, S = w.df.tiletype_material, w.df.tiletype_shape
+        w.set_tile(99, 50, 42, M.SOIL, S.FLOOR)
+        w.set_tile(101, 50, 42, M.SOIL, S.FLOOR)
+        local plan = {step = 7, anchor = {x = 100, y = 50}, levels = {surface = 42, farming = 40}}
+        return w, env, plan, w.block_at(99, 50, 42), w.block_at(101, 50, 42)
+    end
+    local D = 'DownStair'
+
+    local w, env, plan, a, b = door_world()
+    check('missing surface stairs are designated again', env.ensure_entrance(plan) == 2, plan.entrance_tries)
+    check('as down-stairs', a.designation[99 % 16][50 % 16].dig == w.df.tile_dig_designation[D]
+          and b.designation[101 % 16][50 % 16].dig == w.df.tile_dig_designation[D])
+    check('not twice while they are still designated', env.ensure_entrance(plan) == 0)
+
+    w, env, plan, a = door_world()
+    local M, S = w.df.tiletype_material, w.df.tiletype_shape
+    w.set_tile(99, 50, 42, M.SOIL, S.STAIR_DOWN)
+    check('one finished stair is a working door', env.ensure_entrance(plan) == 0)
+
+    w, env, plan = door_world()
+    plan.step = 2
+    check('too early: /surface1 has not run yet', env.ensure_entrance(plan) == 0)
+
+    w, env, plan, a = door_world()
+    plan.entrance_tries = 5
+    check('gives up rather than fight DF forever', env.ensure_entrance(plan) == 0)
+end
+
 -- The opening must not be paced. A live embark spent four real minutes getting to
 -- /surface2 with five of seven dwarves idle, because every step waited 60 seconds
 -- behind the last whether or not it had anything to wait for.

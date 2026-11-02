@@ -114,18 +114,48 @@ local function drive_title(scr)
     note('waiting on the title screen (subpage ' .. tostring(subpage) .. ')')
 end
 
--- Continue Playing: one save, or the most recent.
-local function drive_loadgame(scr)
-    local ok = pcall(function()
-        if #scr.saves == 0 then
-            antfarm_autostart.failed = 'no saves to continue'
-            return
+-- Continue Playing. DFHack draws its own load screen over the vanilla one, and
+-- nothing can be typed into that, so hand the choice to DFHack's load-save, which
+-- works from either and clears the overlay itself (verified live, 2026-11-02).
+-- Like the launcher, never guess between saves: take the only one, or the one
+-- ANTFARM_REGION names, and otherwise stop and say so.
+function choose_save(names, want)
+    if want and want ~= '' then
+        for _, name in ipairs(names) do
+            if name == want then return name end
         end
-        scr.sel_idx = 0
-        gui.simulateInput(scr, 'SELECT')
-        note('loading the saved fort')
-    end)
-    if not ok then note('could not read the save list') end
+        return nil, ('ANTFARM_REGION=%s is not among the saves: %s'):format(want, table.concat(names, ' '))
+    end
+    if #names == 1 then return names[1] end
+    if #names == 0 then return nil, 'no saves to continue' end
+    return nil, ('several saves to continue (%s); set ANTFARM_REGION to choose one')
+        :format(table.concat(names, ' '))
+end
+
+local LOAD_WAIT_SEC = 300     -- a big fort takes a while, but not forever
+
+local function drive_load()
+    if antfarm_autostart.load_requested then
+        if os.time() - antfarm_autostart.load_requested > LOAD_WAIT_SEC then
+            antfarm_autostart.failed = 'load-save did not bring the fort up'
+        end
+        return
+    end
+    local scr = dfhack.gui.getViewscreenByType(df.viewscreen_loadgamest, 0)
+    if not scr then
+        note('waiting for the save list')
+        return
+    end
+    local names = {}
+    for i = 0, #scr.saves - 1 do table.insert(names, scr.saves[i].folder_name) end
+    local name, why = choose_save(names, os.getenv('ANTFARM_REGION'))
+    if not name then
+        antfarm_autostart.failed = why
+        return
+    end
+    antfarm_autostart.load_requested = os.time()
+    note('loading ' .. name)
+    dfhack.run_command('load-save', name)
 end
 
 -- Site selection. antfarm_embark ranks sites and presses `e`; if the press does
@@ -282,35 +312,14 @@ local function step()
         elseif is_a('viewscreen_update_regionst', scr) then
             note('DF is advancing world history (this takes a while)')
         elseif is_a('viewscreen_loadgamest', scr) then
-            drive_loadgame(scr)
+            drive_load()
         elseif is_a('viewscreen_titlest', scr) then
             drive_title(scr)
         else
             local focus = tostring(dfhack.gui.getCurFocus(true))
-            -- DFHack replaces the vanilla load screen with its own Lua one
-            -- (`dfhack/lua/load_screen`). It drives itself once a save is chosen,
-            -- and the launcher now avoids it entirely by passing +load-save, so
-            -- there is nothing to do here but wait rather than report confusion.
             if focus:find('load_screen', 1, true) then
-                -- DFHack replaces the vanilla load screen with its own Lua one
-                -- (`dfhack/lua/load_screen`), which is not a viewscreen this
-                -- stepper can recognise or drive. The launcher avoids it by
-                -- passing `+load-save <region>`, so landing here means DF was
-                -- started bare. Say so instead of waiting out MAX_SECONDS in
-                -- silence, which is what it used to do.
-                antfarm_autostart.load_screen_since =
-                    antfarm_autostart.load_screen_since or os.time()
-                local waited = os.time() - antfarm_autostart.load_screen_since
-                if waited > 60 then
-                    antfarm_autostart.failed =
-                        'stuck on DFHack\'s load screen -- it cannot be driven from '
-                        .. 'here. Pick the save in the DF window, or relaunch with '
-                        .. '`./start_antfarm.sh` (it passes +load-save).'
-                else
-                    note(('DFHack is loading the save (%ds)'):format(waited))
-                end
+                drive_load()
             else
-                antfarm_autostart.load_screen_since = nil
                 note('waiting on ' .. focus)
             end
         end
@@ -324,7 +333,7 @@ function go()
     antfarm_autostart.running = true
     antfarm_autostart.started_at = os.time()
     antfarm_autostart.embark_tries = 0
-    antfarm_autostart.load_screen_since = nil
+    antfarm_autostart.load_requested = nil
     antfarm_autostart.done = false
     antfarm_autostart.failed = nil
     antfarm_autostart.last = nil

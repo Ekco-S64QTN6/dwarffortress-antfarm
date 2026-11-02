@@ -110,6 +110,9 @@ local PLAN = {
      gate_levels = {'surface'},
      note = 'dig the farming level in the soil layer'},
     {bp = '/farming2',     level = 'farming',  gate = 'dig',   orders = true,
+     parts = {'/farming_build', '/farming_place', '/farming_traffic',
+              '/farming_query_stockpiles'},
+     link = 'farming_link',
      note = 'farm plots, workshops and stockpiles'},
     {bp = '/surface3',     level = 'surface',  gate = 'none',  orders = true,
      note = 'surface walls and floors'},
@@ -184,6 +187,8 @@ local function default_plan()
         auto = false,
         last_run = 0,
         orders_done = {},
+        vents_extended = false,
+        entrance_tries = 0,
         -- Per-step attempt counts, so a step that quietly does nothing is
         -- retried a bounded number of times rather than skipped on the spot.
         attempts = {},
@@ -737,8 +742,8 @@ end
 -- steps were being marked complete without ever running (report finding F-05).
 -- run_command_silent hands us the output, which quickfort ends with
 -- "<command> successfully completed" and a line per statistic.
-local function run_quickfort(verb, bp, cursor, repeat_arg)
-    local cmd = ('quickfort %s %s -n %s --cursor %s'):format(verb, DREAMFORT, bp, cursor)
+local function run_quickfort(verb, bp, cursor, repeat_arg, file)
+    local cmd = ('quickfort %s %s -n %s --cursor %s'):format(verb, file or DREAMFORT, bp, cursor)
     if repeat_arg then cmd = cmd .. ' --repeat ' .. repeat_arg end
     print('  > ' .. cmd)
 
@@ -770,6 +775,135 @@ local function run_quickfort(verb, bp, cursor, repeat_arg)
                 effective = effective, output = output}
     end
     return {ok = true, effective = effective, wasted = wasted, output = output}
+end
+
+-- The fort's front door. /surface1 designates two down-stairs on the surface above
+-- the central shaft, but DF can drop them ("damp stone located"). A live fort then
+-- reached its shaft only through vent ramps, lost that route, and left one dwarf
+-- starving below with the picks while six stood on the surface beside the food.
+-- Nothing else ever puts these back, so check them on every poll.
+local ENTRANCE_DX = {-1, 1}     -- /surface_clear_small's two `j` tiles
+local MAX_ENTRANCE_TRIES = 5
+
+function ensure_entrance(plan)
+    if not plan.levels or not plan.anchor or plan.step <= 2 then return 0 end
+    if (plan.entrance_tries or 0) >= MAX_ENTRANCE_TRIES then return 0 end
+    local S = df.tiletype_shape
+    local z, y = plan.levels.surface, plan.anchor.y
+    local tiles = {}
+    for _, dx in ipairs(ENTRANCE_DX) do
+        local x = plan.anchor.x + dx
+        local block = dfhack.maps.getTileBlock(x, y, z)
+        if not block then return 0 end
+        local shape = df.tiletype.attrs[block.tiletype[x % 16][y % 16]].shape
+        local des = block.designation[x % 16][y % 16]
+        if shape == S.STAIR_DOWN or shape == S.STAIR_UPDOWN or des.dig ~= df.tile_dig_designation.No then
+            return 0        -- already there, or already on its way
+        end
+        table.insert(tiles, {x = x, block = block, des = des, floor = shape ~= S.WALL and shape ~= S.EMPTY})
+    end
+    for _, job in utils.listpairs(df.global.world.jobs.list) do
+        local ok, here = pcall(function()
+            return job.pos.z == z and job.pos.y == y
+                and (job.pos.x == tiles[1].x or job.pos.x == tiles[2].x)
+        end)
+        if ok and here then return 0 end
+    end
+    local placed = 0
+    for _, t in ipairs(tiles) do
+        if t.floor then
+            t.des.dig = df.tile_dig_designation.DownStair
+            t.block.flags.designated = true
+            placed = placed + 1
+        end
+    end
+    if placed > 0 then
+        plan.entrance_tries = (plan.entrance_tries or 0) + 1
+        print(('antfarm_blueprint: surface stairs were missing; designated %d again (try %d/%d)')
+            :format(placed, plan.entrance_tries, MAX_ENTRANCE_TRIES))
+        save_plan()
+    end
+    return placed
+end
+
+-- The other thing Dreamfort assumes about a farming level one z below the surface:
+-- /farming_link's stockpile links press `<` once to reach the surface. Deeper, the
+-- cursor lands on bare dirt, nothing can be selected, and the game stays in the
+-- link menu with its clock stopped. Those are the only z-crossing query keys in the
+-- whole file, so generate that one section with the `<` the real depth needs.
+local LINK_FILE = 'antfarm_farming_link.csv'
+
+function link_blueprint_text(csv_text, label, depth)
+    local out, inside = {}, false
+    for line in (csv_text .. '\n'):gmatch('(.-)\r?\n') do
+        if line:find('label(' .. label .. ')', 1, true) then
+            inside = true
+        elseif inside and (line:find('^#') or line:find('^"#')) then
+            break
+        end
+        if inside then
+            local fixed = line:gsub('<&', ('<'):rep(depth) .. '&')
+            table.insert(out, fixed)
+        end
+    end
+    if #out == 0 then return nil end
+    return table.concat(out, '\n') .. '\n'
+end
+
+local function write_link_blueprint(label, depth)
+    local src = io.open('blueprints/' .. DREAMFORT, 'r')
+    if not src then return false, 'could not read ' .. DREAMFORT end
+    local text = link_blueprint_text(src:read('*a'), label, depth)
+    src:close()
+    if not text then return false, 'no label ' .. label .. ' in ' .. DREAMFORT end
+    local out = io.open('blueprints/' .. LINK_FILE, 'w')
+    if not out then return false, 'could not write ' .. LINK_FILE end
+    out:write(text)
+    out:close()
+    return true
+end
+
+-- Run a step's blueprint. A meta blueprint cannot skip a section, so a step with
+-- a level-crossing link runs its sections one by one when the level is deeper than
+-- Dreamfort expects. Links only move stock around: a failed one is a warning, never
+-- a reason to hold back the farm plots behind it.
+local function run_step_blueprint(step, plan, cursor, repeat_arg)
+    local depth = plan.levels.surface - plan.levels.farming
+    if not step.parts or depth <= 1 then
+        return run_quickfort('run', step.bp, cursor, repeat_arg)
+    end
+    local total = {ok = true, effective = 0}
+    for _, part in ipairs(step.parts) do
+        local r = run_quickfort('run', part, cursor)
+        if not r.ok then return r end
+        total.effective = total.effective + r.effective
+    end
+    local wrote, why = write_link_blueprint(step.link, depth)
+    if wrote then
+        local r = run_quickfort('run', '/' .. step.link, cursor, nil, LINK_FILE)
+        if not r.ok then why = r.reason end
+    end
+    if why then total.link_problem = tostring(why) end
+    return total
+end
+
+-- Dreamfort's miasma vents are channels from the surface into a farming level one
+-- z below it, and some farming rooms are only reachable through them. We farm
+-- deeper than that (MIN_FARMING_DEPTH), so the channels stopped a level short: a
+-- live fort sealed 17 designated tiles, held /farming2 for 25 minutes and never
+-- placed a farm plot while food ran out. Repeat the same channels down to the
+-- level above farming, which also makes the vents reach the farms as intended.
+function extend_vents(plan)
+    if plan.vents_extended or not plan.levels or not plan.anchor then return 0 end
+    local tiles = 0
+    for z = plan.levels.surface - 1, plan.levels.farming + 1, -1 do
+        local r = run_quickfort('run', '/surface_channel',
+                                ('%d,%d,%d'):format(plan.anchor.x, plan.anchor.y, z))
+        if not r.ok then return tiles, r.reason end
+        tiles = tiles + r.effective
+    end
+    plan.vents_extended = true
+    return tiles
 end
 
 -- The game must actually be on the map before quickfort touches anything.
@@ -836,22 +970,44 @@ function apply_step(index, force)
         repeat_arg = 'down,' .. math.max(1, math.ceil(span / 2))
     end
 
-    if step.orders then
-        run_quickfort('orders', step.bp, cursor, repeat_arg)
+    -- Once per step. A retry re-importing them took a live fort from 63 work
+    -- orders to 99 in under a minute.
+    plan.orders_applied = plan.orders_applied or {}
+    if step.orders and not plan.orders_applied[tostring(index)] then
+        local o = run_quickfort('orders', step.bp, cursor, repeat_arg)
+        if o.ok then plan.orders_applied[tostring(index)] = true end
     end
-    local result = run_quickfort('run', step.bp, cursor, repeat_arg)
+    local result = run_step_blueprint(step, plan, cursor, repeat_arg)
 
-    if not result.ok then
-        -- A hard failure never advances the checklist: the fort would be
-        -- missing whatever this step builds and nothing would say so.
-        record_warning(plan, step, index, 'failed -- ' .. tostring(result.reason))
-        plan.last_run = os.time()
-        save_plan()
-        return false
+    -- Whatever a query left open is ours to close, or the game clock stays stopped.
+    pcall(function()
+        if df.global.ui.main.mode ~= df.ui_sidebar_mode.Default then
+            reqscript('antfarm_ui').arm_stray_cleanup()
+        end
+    end)
+
+    if result.link_problem then
+        record_warning(plan, step, index, 'stockpile links not all set -- ' .. result.link_problem)
     end
 
     local attempts = (plan.attempts[tostring(index)] or 0) + 1
     plan.attempts[tostring(index)] = attempts
+
+    if not result.ok then
+        -- Hold the step and retry, but not forever. A query that half ran cannot
+        -- succeed on a second pass over stockpiles it already configured, and
+        -- holding here keeps every later step, farm plots included, from the fort.
+        -- Moving on is loud: whatever failed is recorded as missing.
+        record_warning(plan, step, index, 'failed -- ' .. tostring(result.reason))
+        plan.last_run = os.time()
+        if attempts < MAX_STEP_ATTEMPTS or force then
+            save_plan()
+            return false
+        end
+        record_warning(plan, step, index,
+            ('still failing after %d attempts; moving on -- part of it is NOT there'):format(attempts))
+        result.effective = 1
+    end
 
     if result.effective == 0 and not force then
         if attempts < MAX_STEP_ATTEMPTS then
@@ -870,6 +1026,11 @@ function apply_step(index, force)
         record_warning(plan, step, index,
             ('affected 0 tiles after %d attempts; moving on -- whatever it '
              .. 'builds is NOT there'):format(attempts))
+    end
+
+    if step.bp == '/surface2' then
+        local _, why = extend_vents(plan)
+        if why then record_warning(plan, step, index, 'vents not extended -- ' .. tostring(why)) end
     end
 
     plan.step = index + 1
@@ -1035,6 +1196,8 @@ function autostart(min_quality)
     plan.farming_mode = best.farming_mode
     plan.step = 1
     plan.orders_done = {}
+    plan.vents_extended = false
+    plan.entrance_tries = 0
     plan.attempts = {}
     plan.warnings = {}
     plan.gate_since = 0
@@ -1147,6 +1310,58 @@ function cancel_suspended_builds(zs)
 end
 
 -- Try to get a held gate moving again. Cheap remediations first.
+-- The backstop for a gate nothing can ever clear: every tile left on the gate's
+-- own levels is walled in, with no job and nothing walkable beside it, on a level
+-- dwarves have already reached. Only then are the designations dropped. A level
+-- not reached yet looks the same, and it is why lower levels are never touched.
+function clear_sealed(plan, scope)
+    local zs = fort_zlevels((function()
+        local sc = {}
+        for _, name in ipairs(scope) do
+            if plan.levels[name] then sc[name] = plan.levels[name] end
+        end
+        return sc
+    end)())
+    local working = {}
+    for _, job in utils.listpairs(df.global.world.jobs.list) do
+        local ok, key = pcall(function() return job.pos.x .. ',' .. job.pos.y .. ',' .. job.pos.z end)
+        if ok then working[key] = true end
+    end
+    local function walkable(x, y, z)
+        local b = dfhack.maps.getTileBlock(x, y, z)
+        return b ~= nil and b.walkable ~= nil and b.walkable[x % 16][y % 16] > 0
+    end
+    local sealed, reached = {}, false
+    local blocks = df.global.world.map.map_blocks
+    for i = 0, #blocks - 1 do
+        local block = blocks[i]
+        if block and zs[block.map_pos.z] then
+            local z = block.map_pos.z
+            for bx = 0, 15 do
+                for by = 0, 15 do
+                    if block.walkable and block.walkable[bx][by] > 0 then reached = true end
+                    local des = block.designation[bx][by]
+                    if des.dig ~= df.tile_dig_designation.No then
+                        local x, y = block.map_pos.x + bx, block.map_pos.y + by
+                        if working[x .. ',' .. y .. ',' .. z] then return 0 end
+                        for dx = -1, 1 do
+                            for dy = -1, 1 do
+                                for dz = -1, 1 do
+                                    if walkable(x + dx, y + dy, z + dz) then return 0 end
+                                end
+                            end
+                        end
+                        table.insert(sealed, des)
+                    end
+                end
+            end
+        end
+    end
+    if not reached then return 0 end
+    for _, des in ipairs(sealed) do des.dig = df.tile_dig_designation.No end
+    return #sealed
+end
+
 local function remediate(plan, reason)
     print('antfarm_blueprint: build stalled -- ' .. tostring(reason))
     -- Suspended constructions are the commonest cause and the cheapest fix.
@@ -1157,6 +1372,20 @@ local function remediate(plan, reason)
     local cleared = unstick(plan.levels)
     if cleared > 0 then
         return ('cleared %d damp designation(s)'):format(cleared)
+    end
+    -- Forts already past /surface2 when this was added get their vents here.
+    if plan.step > 5 then
+        local vents = extend_vents(plan)
+        if vents > 0 then return ('extended the vents through %d tile(s)'):format(vents) end
+    end
+    local step = PLAN[plan.step]
+    if step then
+        local sealed = clear_sealed(plan, step.gate_levels or {step.level})
+        if sealed > 0 then
+            record_warning(plan, step, plan.step,
+                ('dropped %d sealed dig designation(s) nothing could reach'):format(sealed))
+            return ('dropped %d sealed designation(s)'):format(sealed)
+        end
     end
     -- If stalled on construction jobs for > 15 minutes and unsuspend failed, cancel unbuildable suspended jobs
     local now = os.time()
@@ -1232,6 +1461,7 @@ local function auto_tick()
     local now = wall_sec()
     if now - auto_last >= AUTO_POLL_SEC then
         auto_last = now
+        if dfhack.isMapLoaded() and plan.anchor then pcall(ensure_entrance, plan) end
         if dfhack.isMapLoaded() and plan.anchor and plan.step <= #PLAN then
             local step = PLAN[plan.step]
             local paced = step.gate == 'build' or (plan.attempts[tostring(plan.step)] or 0) > 0

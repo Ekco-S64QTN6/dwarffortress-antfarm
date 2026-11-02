@@ -564,6 +564,75 @@ do
 end
 
 -- ---------------------------------------------------------------- --
+-- A sidebar menu left open stops the game clock.
+local function stray_world()
+    local w, env = fresh()
+    w.df.global.ui.main.mode = w.df.ui_sidebar_mode.QueryBuilding
+    w.on_key = function(_, key)
+        if key == 'LEAVESCREEN' then w.df.global.ui.main.mode = w.df.ui_sidebar_mode.Default end
+    end
+    return w, env
+end
+
+do
+    local w, env = stray_world()
+    run(env, w, 20000)
+    check('stray menu: a human\'s open menu is left alone', #w.keys_pressed() == 0)
+end
+
+do
+    local w, env = stray_world()
+    env.set_screens_enabled(true)
+    run(env, w, 2000)
+    check('stray menu: a moment in a menu is not stray', #w.keys_pressed() == 0)
+    run(env, w, 6000)
+    check('stray menu: closed while a client drives the fort', count(w.keys_pressed(), 'LEAVESCREEN') == 1)
+    run(env, w, 6000)
+    check('stray menu: never a second key on the map itself', count(w.keys_pressed(), 'LEAVESCREEN') == 1)
+end
+
+do
+    local w, env = stray_world()
+    env.arm_stray_cleanup()
+    run(env, w, 800)
+    check('stray menu: our own blueprint\'s leftover closes at once, client or not',
+          count(w.keys_pressed(), 'LEAVESCREEN') == 1)
+    check('stray menu: back on the map', w.df.global.ui.main.mode == w.df.ui_sidebar_mode.Default)
+end
+
+do
+    -- Queued keys: one per pass, so nothing lands after the mode is already Default.
+    local w, env = stray_world()
+    w.async_keys = true
+    env.arm_stray_cleanup()
+    w.advance(200); env.tick()
+    w.advance(100); env.tick()
+    check('stray menu: never stacks keys in the queue', count(w.keys_pressed(), 'LEAVESCREEN') == 1,
+          count(w.keys_pressed(), 'LEAVESCREEN'))
+end
+
+-- ---------------------------------------------------------------- --
+-- warn-starving's dialog stops the clock until someone answers it.
+do
+    local w, env = fresh()
+    env.set_screens_enabled(true)
+    local dlg = {vtype = 'dfhack_lua', focus = 'dfhack/lua/warn-starving'}
+    w.push(dlg)
+    w.on_key = function(_, key) if key == 'LEAVESCREEN' then w.pop() end end
+    run(env, w, 2000)
+    check('warn-starving: answered while a client drives the fort', w.top() ~= dlg)
+    check('warn-starving: once', count(w.keys_pressed(), 'LEAVESCREEN') == 1, count(w.keys_pressed(), 'LEAVESCREEN'))
+end
+
+do
+    local w, env = fresh()
+    local dlg = {vtype = 'dfhack_lua', focus = 'dfhack/lua/warn-starving'}
+    w.push(dlg)
+    run(env, w, 2000)
+    check('warn-starving: a human playing still gets to read it', w.top() == dlg and #w.keys_pressed() == 0)
+end
+
+-- ---------------------------------------------------------------- --
 -- The liaison meeting: spoken lines, topic steps, then the requests screen.
 do
     local w, env = fresh()

@@ -133,6 +133,7 @@ finding-by-finding review of the earlier report.
 | **A still with no brew orders** | Live `region1` sat at build step 4 with a finished still and `orders_done` empty: `library/basic` waits for step 5, which waits on surface digging. `antfarm_sustenance` now imports it once a still is finished, via `antfarm_blueprint.import_order_library()`, which also adopts brew orders already in the fort instead of duplicating 46 orders after a re-anchor. **Verified live:** imported on load, recorded in the plan, not re-imported at step 6; all 53 orders validated about nine in-game days after load |
 | **The idle dwarves** | `prioritize -j` and `autolabor status` on the live fort: the only unclaimed work was 59 dig/stair jobs, so four dwarves had nothing they *could* do. Once step 5 placed workshops and stockpiles, every dwarf had a job |
 | **The idle opening** | A fresh embark sampled every 10s: five of seven dwarves idle for 4 real minutes (about 20 game days), until `/surface2` placed workshops and stockpiles. Every step was held 60s behind the last, and Play Now brought 2 picks and 12 drinks. Ungated steps now run back to back and `antfarm_autostart` loads the `GORNYS EASY PEASY START` preset. **Verified live:** step 7 about 40s after embark, at most 3 of 7 idle |
+| **The farming level never built** | Vents stopped a level short of the farms, sealing 17 designated tiles and holding `/farming2` for 25 minutes while food fell from 47 to 14; `/farming_link` then left the UI in a menu that stops the game clock. Vents and links now follow the real depth, a stray menu is closed, retries are bounded and orders import once. **Verified live on a fresh world:** 9 plots by about minute 10, seeds planted and harvested, step 10 by minute 25, all dwarves connected, drink 34 to 162 units |
 | **A pick on the floor** | `tune_labour()` set each tool labour's minimum to 1, below DFHack's MINE default of 2; past the minimum autolabor only adds skilled dwarves or acts when 2+ are idle (`autolabor.cpp`, 0.47.05-r8). 110 dig jobs had one miner. Minimum now equals the tool count. **Verified live:** both picks held, two dig jobs worked |
 
 These are code/CI checks, not live-fort verification. The military squad-creation
@@ -341,7 +342,9 @@ Andrelius Windmill Villas over Dreamfort's boxy quarters.
 * `MIN_FARMING_DEPTH = 2` is **deliberate**, not a typo for 3: the soil column
   on this embark is two levels deep, and a depth of 3 puts the farms in bare
   rock where no plot can be built without irrigating the floor to mud first.
-  Do not "fix" it to 3.
+  Do not "fix" it to 3. Dreamfort itself assumes a depth of 1 in exactly two
+  places, both handled in `antfarm_blueprint`: the miasma vents (`extend_vents`)
+  and the `<` in `/farming_link` (`link_blueprint_text`).
 * `fix/sleepers.lua` is a genuine DFHack script but **adventure-mode only** — it
   clears `ALARM_INTRUDER` on camp army controllers — so it is correctly *not*
   scheduled in `onMapLoad.init`. Do not add it.
