@@ -274,6 +274,11 @@ silently disagreed before (a stripped trailing space made every nickname *clear*
 - **Never butcher a pet, a trained war/hunting animal, or the last of a sex.** `pick_for_slaughter`
   prefers an animal autobutcher already marked; the live fix was a butcher's workshop, not a mark.
 
+- **There is no `CRAFTS` item type.** `df.item_type.CRAFTS` is nil in this build; a craft job yields
+  figurines, rings, scepters and so on, so count them as a list (`antfarm_trade.CRAFT_TYPES`).
+- **The embark loadout is a community preset.** `antfarm_autostart.PROFILE_TITLE` names one from
+  `data/init/embark_profiles.txt`. Pick from those rather than writing a new one.
+
 - **Never write `manager_order.status` bits.** Forcing `validated`/`active` to make work
   orders issue segfaulted DF silently — no error, no core, nothing in the log (AGENTS.md 6.1.12).
   Read them; never write them.
