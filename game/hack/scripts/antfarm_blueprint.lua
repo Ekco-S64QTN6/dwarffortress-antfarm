@@ -755,8 +755,10 @@ local function run_quickfort(verb, bp, cursor, repeat_arg, file)
     output = output or ''
     if status ~= nil and status ~= CR_OK then
         dfhack.printerr(('antfarm_blueprint: %s returned %s'):format(cmd, tostring(status)))
-        return {ok = false, reason = 'quickfort reported failure', effective = 0,
-                output = output}
+        local first = output:match('[^\n]+') or 'no output'
+        dfhack.printerr('  ' .. first)
+        return {ok = false, reason = 'quickfort reported failure: ' .. first:sub(1, 200),
+                effective = 0, output = output}
     end
 
     local completed = output:find('successfully completed', 1, true) ~= nil
@@ -800,7 +802,10 @@ function ensure_entrance(plan)
         if shape == S.STAIR_DOWN or shape == S.STAIR_UPDOWN or des.dig ~= df.tile_dig_designation.No then
             return 0        -- already there, or already on its way
         end
-        table.insert(tiles, {x = x, block = block, des = des, floor = shape ~= S.WALL and shape ~= S.EMPTY})
+        local okb, building = pcall(dfhack.buildings.findAtTile, xyz2pos(x, y, z))
+        local free = not (okb and building)
+        table.insert(tiles, {x = x, block = block, des = des,
+                             floor = free and shape ~= S.WALL and shape ~= S.EMPTY})
     end
     for _, job in utils.listpairs(df.global.world.jobs.list) do
         local ok, here = pcall(function()
