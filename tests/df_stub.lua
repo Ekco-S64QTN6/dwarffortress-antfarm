@@ -28,7 +28,8 @@ local VIEWSCREENS = {
     'viewscreen_export_graphical_mapst', 'viewscreen_legendsst', 'viewscreen_dungeonmodest',
     'viewscreen_game_cleanerst', 'viewscreen_layer_world_gen_paramst',
     'viewscreen_layer_world_gen_param_presetst', 'viewscreen_unitst',
-    'viewscreen_layer_militaryst',
+    'viewscreen_layer_militaryst', 'viewscreen_meetingst', 'viewscreen_tradeagreementst',
+    'viewscreen_layer_assigntradest', 'viewscreen_tradegoodsst', 'viewscreen_tradelistst',
 }
 
 -- Announcement types the tests care about; the real enum has 339.
@@ -88,7 +89,7 @@ function M.new()
         df.announcement_type[i - 1] = name
         df.announcement_type[name] = i - 1
     end
-    df.ui_sidebar_mode = {Default = 0, Build = 16, LookAround = 25}
+    df.ui_sidebar_mode = {Default = 0, Build = 16, QueryBuilding = 17, LookAround = 25}
     df.agreement_details_type = {}
     for i, name in ipairs({'JoinParty', 'DemonicBinding', 'Residency', 'Citizenship', 'Parley'}) do
         df.agreement_details_type[i - 1] = name
