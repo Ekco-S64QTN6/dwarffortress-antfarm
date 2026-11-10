@@ -164,7 +164,7 @@ session and produced the stated effect:
 | **Subsystem tick dispatcher** | Low | Confirm `subsystems` in `antfarm_state.json` updates and that each module's notes appear over ~15 min |
 | **State aggregator rewrite** | Low | Confirm `housing.shortfall`, `trade.has_depot`, `metals.missing` show real values, not `0`/`true`/`[1,2]` |
 | **`antfarm_military` enlist / schedule** | Medium | **Enlist verified live 2026-11-01** against a squad the new driver created: target 1 soldier for 7 able citizens, the commander DF seats in position 0 counted, nobody extra drafted. Schedule `min_count` still unverified |
-| **`antfarm_military create`** | — | **Resolved 2026-10-31: impossible in this build, now refuses.** See below |
+| **`antfarm_military create`** | — | **Resolved 2026-11-01:** building `df.squad` from Lua is impossible in 0.47, so squads are created through DF's military screen (`antfarm_ui squad`), verified live. See below |
 | **Meeting-hall population sizing** | Low | Confirm the hall grows past the furniture box without swallowing corridors |
 | **Grazing pasture + farmer workshop** | Medium | Confirm the zone is created on grass and the workshop lands adjacent |
 | **Elven caravan detection** | Low | Needs an elven caravan on the map |

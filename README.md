@@ -190,6 +190,12 @@ Three things keep the build honest rather than merely optimistic:
 footprint will not fit. Full details in
 **[docs/fortress-build.md](docs/fortress-build.md)**.
 
+Beyond the build, `antfarm_trade` keeps a depot, sends finished goods and buys
+from a shopping list when a caravan arrives (picks, axes and an anvil first), and
+`antfarm_mood` watches strange moods: it unforbids what the moody dwarf needs and,
+when the fort has none, arranges it — a butcher or tanner with a suitable animal,
+block and gem orders — with conjuring an item opt-in only.
+
 Standing automation — farming, livestock caps, workflow, seed and stock
 management, housekeeping — lives in
 `game/dfhack-config/init/onMapLoad.init`, where you can edit it
@@ -398,10 +404,10 @@ cd game && ./df -gen 1 RANDOM TOLKIEN_EPIC_MEDIUM
 > This world is deliberately hostile — 40 titans, 80 demons, night creatures and
 > werebeasts. Antfarm has **partial military and defensive automation**:
 > `antfarm_defence` maintains entrance traps and restraints, `antfarm_lever`
-> can pull enrolled gates on dangerous events, and `antfarm_military` can enlist
-> into existing squads and tune training schedules. However, creating a squad
-> remains an explicit, high-risk operation pending live verification, and there
-> is no fully verified tactical response or burrow-evacuation policy. Do not
+> can pull enrolled gates on dangerous events, and `antfarm_military` creates
+> squads through DF's own military screen (verified live 2026-11-01), enlists
+> into them and tunes training schedules. There is still no fully verified
+> tactical response or burrow-evacuation policy. Do not
 > treat a hostile-world fort as siege-proof. Turn the `*_NUMBER` and `*_CAP`
 > values down for a fort that survives long enough to finish building.
 

@@ -91,15 +91,16 @@ those flags. Do not turn it into an automatic repair.
 | Check | Passes when | Fixed by |
 | :-- | :-- | :-- |
 | key officers appointed | manager, bookkeeper, broker, chief medical dwarf all filled | `antfarm_nobles appoint` |
-| military exists | at least one squad | **Manual:** create a squad in the military screen (`m`, then `c`); `antfarm_military enlist` fills it. Inspect with `antfarm_military status`. |
+| military exists | at least one squad | `antfarm_military create` (drives DF's military screen); `antfarm_military enlist` fills it. Inspect with `antfarm_military status`. |
 | justice | a sheriff (or captain) and somewhere to hold a prisoner | `antfarm_nobles appoint` (the jail is still unimplemented) |
 
 ### Governance safety note
 
-The `military exists` check is read-only. Squads must be created by hand in
-DF's military screen (`m`, then `c`): `antfarm_military create` was found on
-2026-10-31 to be impossible in DFHack 0.47 Lua and now only explains this (see
-[`ROADMAP.md`](ROADMAP.md#the-one-to-be-careful-with)). Once a squad exists,
+The `military exists` check is read-only. `antfarm_military create` (or
+`antfarm_ui squad`) creates a squad the way a player does, through DF's military
+screen, and only on the operator's say-so; building `df.squad` from Lua was found
+impossible in DFHack 0.47 on 2026-10-31 (see
+[`ROADMAP.md`](ROADMAP.md#the-one-to-be-careful-with--resolved-it-could-never-have-worked)). Once a squad exists,
 `antfarm_military enlist` and the schedule tuning manage it.
 
 ### Health
